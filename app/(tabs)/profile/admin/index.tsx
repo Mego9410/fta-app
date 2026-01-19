@@ -14,9 +14,11 @@ import {
 import { Text } from '@/components/Themed';
 import type { Listing } from '@/src/domain/types';
 import { listListings, setListingStatus } from '@/src/data/listingsRepo';
-import { setAdminForceOnboardingNextOpenEnabled } from '@/src/data/onboardingLocalRepo';
+import { setAdminForceLoginNextOpenEnabled, setAdminForceOnboardingNextOpenEnabled } from '@/src/data/onboardingLocalRepo';
 import { importFtaPracticesForSale } from '@/src/data/importers/ftaPracticesForSale';
 import { hydrateAdminSession, isAdminAuthed, setAdminAuthed } from '@/src/ui/admin/adminSession';
+import { getAdminAccess } from '@/src/supabase/admin';
+import { isSupabaseConfigured, requireSupabase } from '@/src/supabase/client';
 import { ListingCard } from '@/src/ui/components/ListingCard';
 import { ScreenHeader } from '@/src/ui/components/ScreenHeader';
 import { ui } from '@/src/ui/theme';
@@ -25,6 +27,9 @@ export default function AdminHomeScreen() {
   const [authed, setAuthedState] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [passcode, setPasscode] = useState('');
+  const [authEmail, setAuthEmail] = useState('');
+  const [mode, setMode] = useState<'local' | 'supabase'>('local');
+  const [notAdmin, setNotAdmin] = useState(false);
 
   const [showArchived, setShowArchived] = useState(false);
   const [keyword, setKeyword] = useState('');
@@ -37,8 +42,31 @@ export default function AdminHomeScreen() {
     let cancelled = false;
     (async () => {
       try {
-        const next = await hydrateAdminSession();
-        if (!cancelled) setAuthedState(next);
+        if (!isSupabaseConfigured) {
+          setMode('local');
+          const next = await hydrateAdminSession();
+          if (!cancelled) setAuthedState(next);
+          return;
+        }
+
+        setMode('supabase');
+        const access = await getAdminAccess();
+        if (cancelled) return;
+        if (access.status === 'admin') {
+          setAuthedState(true);
+          setAuthEmail(access.email);
+          setNotAdmin(false);
+          return;
+        }
+        if (access.status === 'not_admin') {
+          setAuthedState(false);
+          setAuthEmail(access.email);
+          setNotAdmin(true);
+          return;
+        }
+        setAuthedState(false);
+        setAuthEmail('');
+        setNotAdmin(false);
       } finally {
         if (!cancelled) setHydrated(true);
       }
@@ -88,6 +116,43 @@ export default function AdminHomeScreen() {
   }
 
   if (!authed) {
+    if (mode === 'supabase') {
+      return (
+        <View style={styles.container}>
+          <ScreenHeader
+            mode="tabs"
+            fallbackHref="/profile"
+            title="Admin"
+            subtitle={notAdmin ? 'You are signed in but not an admin.' : 'Sign in with an admin account.'}
+            style={{ paddingHorizontal: 0 }}
+          />
+
+          {authEmail ? <Text style={styles.hint}>Signed in as: {authEmail}</Text> : null}
+
+          <Pressable style={[styles.btn, styles.btnPrimary]} onPress={() => router.push('/login')}>
+            <Text style={styles.btnPrimaryText}>Sign in</Text>
+          </Pressable>
+
+          {authEmail ? (
+            <Pressable
+              style={[styles.btn, styles.btnGhost]}
+              onPress={async () => {
+                try {
+                  const supabase = requireSupabase();
+                  await supabase.auth.signOut();
+                } finally {
+                  setAuthedState(false);
+                  setAuthEmail('');
+                  setNotAdmin(false);
+                }
+              }}>
+              <Text style={styles.btnGhostText}>Sign out</Text>
+            </Pressable>
+          ) : null}
+        </View>
+      );
+    }
+
     return (
       <View style={styles.container}>
         <ScreenHeader
@@ -140,9 +205,16 @@ export default function AdminHomeScreen() {
           <Pressable
             style={[styles.btn, styles.btnGhost]}
             onPress={async () => {
-              await setAdminAuthed(false);
+              if (mode === 'supabase') {
+                const supabase = requireSupabase();
+                await supabase.auth.signOut();
+              } else {
+                await setAdminAuthed(false);
+              }
               setAuthedState(false);
               setPasscode('');
+              setAuthEmail('');
+              setNotAdmin(false);
             }}>
             <Text style={styles.btnGhostText}>Lock</Text>
           </Pressable>
@@ -164,6 +236,24 @@ export default function AdminHomeScreen() {
 
             <Pressable style={[styles.btn, styles.btnGhost]} onPress={() => router.push('/(onboarding)/welcome')}>
               <Text style={styles.btnGhostText}>Start now</Text>
+            </Pressable>
+          </View>
+        </View>
+
+        <View style={styles.onboardingAdmin}>
+          <Text style={styles.sectionTitle}>Auth (Admin)</Text>
+          <View style={styles.onboardingActions}>
+            <Pressable
+              style={[styles.btn, styles.btnPrimary]}
+              onPress={async () => {
+                await setAdminForceLoginNextOpenEnabled(true);
+                Alert.alert('Login forced', 'On next app open, the login screen will be shown.');
+              }}>
+              <Text style={styles.btnPrimaryText}>Force login on next open</Text>
+            </Pressable>
+
+            <Pressable style={[styles.btn, styles.btnGhost]} onPress={() => router.push('/login')}>
+              <Text style={styles.btnGhostText}>Open login now</Text>
             </Pressable>
           </View>
         </View>
@@ -192,6 +282,11 @@ export default function AdminHomeScreen() {
           <Link href="/profile/admin/new" asChild>
             <Pressable style={[styles.btn, styles.btnPrimary]}>
               <Text style={styles.btnPrimaryText}>Create Listing</Text>
+            </Pressable>
+          </Link>
+          <Link href="/profile/admin/leads" asChild>
+            <Pressable style={[styles.btn, styles.btnPrimary]}>
+              <Text style={styles.btnPrimaryText}>View Leads</Text>
             </Pressable>
           </Link>
           <Pressable

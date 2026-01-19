@@ -5,6 +5,7 @@ import { StyleSheet, View } from 'react-native';
 import { Text } from '@/components/Themed';
 import {
   consumeAdminForceOnboardingNextOpen,
+  consumeAdminForceLoginNextOpen,
   getLocalOnboardingState,
   isAdminSkipOnboardingEnabled,
 } from '@/src/data/onboardingLocalRepo';
@@ -28,6 +29,17 @@ export default function IndexGate() {
     let cancelled = false;
     (async () => {
       try {
+        // One-shot admin override: force login screen on next open.
+        // Defensive: if Metro serves an older bundle of onboardingLocalRepo, this export may be missing.
+        const shouldForceLogin =
+          typeof consumeAdminForceLoginNextOpen === 'function'
+            ? await consumeAdminForceLoginNextOpen()
+            : false;
+        if (shouldForceLogin) {
+          router.replace('/login');
+          return;
+        }
+
         // One-shot admin override: always show onboarding welcome on next open.
         if (await consumeAdminForceOnboardingNextOpen()) {
           router.replace('/(onboarding)/welcome');

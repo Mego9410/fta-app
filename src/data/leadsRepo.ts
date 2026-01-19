@@ -1,5 +1,6 @@
 import { getDbHandle } from '@/src/data/db';
 import type { Lead, LeadType } from '@/src/domain/types';
+import { isSupabaseConfigured, requireSupabase } from '@/src/supabase/client';
 
 export type CreateLeadInput = Omit<Lead, 'id' | 'createdAt'> & {
   id?: string;
@@ -11,7 +12,6 @@ function makeId() {
 }
 
 export async function createLead(input: CreateLeadInput): Promise<Lead> {
-  const db = await getDbHandle();
   const lead: Lead = {
     id: input.id ?? makeId(),
     type: input.type,
@@ -34,6 +34,46 @@ export async function createLead(input: CreateLeadInput): Promise<Lead> {
     createdAt: input.createdAt ?? new Date().toISOString(),
   };
 
+  if (isSupabaseConfigured) {
+    try {
+      const supabase = requireSupabase();
+      const { data } = await supabase.auth.getSession();
+      const session = data.session;
+      const userId = session?.user?.id ?? null;
+
+      const { error } = await supabase.from('leads').insert({
+        id: lead.id,
+        type: lead.type,
+        listing_id: lead.listingId ?? null,
+        user_id: userId,
+        name: lead.name,
+        email: lead.email ?? null,
+        phone: lead.phone ?? null,
+        callback_window: lead.callbackWindow ?? null,
+        message: lead.message ?? null,
+        industry: lead.industry ?? null,
+        location: lead.location ?? null,
+        income_mix: lead.incomeMix ?? null,
+        practice_type: lead.practiceType ?? null,
+        surgeries_count: lead.surgeriesCount ?? null,
+        tenure: lead.tenure ?? null,
+        readiness: lead.readiness ?? null,
+        timeline: lead.timeline ?? null,
+        revenue_range: lead.revenueRange ?? null,
+        earnings_range: lead.earningsRange ?? null,
+        created_at: lead.createdAt,
+      });
+      if (!error) {
+        return lead;
+      }
+      // If Supabase insert fails (offline, RLS misconfig, etc.), fall back to local storage.
+      console.warn('Supabase lead insert failed; falling back to local DB', error);
+    } catch (e) {
+      console.warn('Supabase lead insert threw; falling back to local DB', e);
+    }
+  }
+
+  const db = await getDbHandle();
   await db.runAsync(
     `INSERT INTO leads(
       id, type, listingId,

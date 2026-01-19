@@ -6,6 +6,8 @@ import { Alert, Image, Pressable, ScrollView, StyleSheet, Switch, View } from 'r
 import { Text } from '@/components/Themed';
 import { upsertListing } from '@/src/data/listingsRepo';
 import { hydrateAdminSession, isAdminAuthed } from '@/src/ui/admin/adminSession';
+import { getAdminAccess } from '@/src/supabase/admin';
+import { isSupabaseConfigured } from '@/src/supabase/client';
 import { Field } from '@/src/ui/components/Field';
 import { PrimaryButton } from '@/src/ui/components/PrimaryButton';
 import { SecondaryButton } from '@/src/ui/components/SecondaryButton';
@@ -22,10 +24,18 @@ export default function AdminNewListingScreen() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      await hydrateAdminSession();
-      if (!isAdminAuthed()) {
-        router.replace('/profile/admin');
-        return;
+      if (!isSupabaseConfigured) {
+        await hydrateAdminSession();
+        if (!isAdminAuthed()) {
+          router.replace('/profile/admin');
+          return;
+        }
+      } else {
+        const access = await getAdminAccess();
+        if (access.status !== 'admin') {
+          router.replace('/profile/admin');
+          return;
+        }
       }
       if (!cancelled) setReady(true);
     })();

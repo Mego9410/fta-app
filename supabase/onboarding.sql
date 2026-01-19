@@ -12,6 +12,7 @@ create table if not exists public.profiles (
   full_name text not null,
   phone text null,
   home_location_label text null,
+  is_admin boolean not null default false,
 
   onboarding_completed_at timestamptz null,
   onboarding_step text not null default 'profile',
@@ -19,6 +20,9 @@ create table if not exists public.profiles (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+-- Lightweight migration(s)
+alter table public.profiles add column if not exists is_admin boolean not null default false;
 
 create table if not exists public.buyer_profiles (
   user_id uuid primary key references public.profiles (id) on delete cascade,

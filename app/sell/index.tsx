@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import Colors from '@/constants/Colors';
 import { Text } from '@/components/Themed';
@@ -22,6 +23,7 @@ type Readiness = 'Ready now' | 'Future';
 
 export default function SellYourBusinessScreen() {
   const theme = useColorScheme() ?? 'light';
+  const insets = useSafeAreaInsets();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
@@ -111,6 +113,9 @@ export default function SellYourBusinessScreen() {
     !!tenure &&
     !!readiness;
 
+  const footerPad = insets.bottom + ui.spacing.md;
+  const scrollBottomPad = useMemo(() => footerPad + 78, [footerPad]);
+
   if (submitted) {
     return (
       <View style={styles.container}>
@@ -126,7 +131,7 @@ export default function SellYourBusinessScreen() {
 
   return (
     <View style={{ flex: 1 }}>
-      <ScrollView contentContainerStyle={styles.scroll}>
+      <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: scrollBottomPad }]}>
         <ScreenHeader
           title="Sell a practice"
           subtitle="Fill this in and we’ll call you back."
@@ -232,7 +237,18 @@ export default function SellYourBusinessScreen() {
           placeholder="Anything you’d like us to know. Confidential info is OK here."
           multiline
         />
+      </View>
+      </ScrollView>
 
+      <View
+        style={[
+          styles.footer,
+          {
+            paddingBottom: footerPad,
+            borderTopColor: theme === 'dark' ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.10)',
+            backgroundColor: theme === 'dark' ? 'rgba(0,0,0,0.85)' : 'rgba(255,255,255,0.92)',
+          },
+        ]}>
         <PrimaryButton
           disabled={!canSubmit || submitting}
           title={submitting ? 'Submitting…' : 'Request callback'}
@@ -268,7 +284,10 @@ export default function SellYourBusinessScreen() {
               try {
                 await notifySellerIntakeByEmail({ lead });
               } catch (err: any) {
-                Alert.alert('Saved, but could not notify', err?.message ?? 'The lead was saved on this device, but email notification failed.');
+                Alert.alert(
+                  'Saved, but could not notify',
+                  err?.message ?? 'The lead was saved on this device, but email notification failed.',
+                );
               }
 
               setSubmitted(true);
@@ -278,7 +297,6 @@ export default function SellYourBusinessScreen() {
           }}
         />
       </View>
-      </ScrollView>
     </View>
   );
 }
@@ -329,6 +347,15 @@ const styles = StyleSheet.create({
   },
   form: { gap: 14, marginTop: 8 },
   divider: { height: StyleSheet.hairlineWidth, opacity: 0.25, marginVertical: 6 },
+  footer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: ui.layout.screenPaddingX,
+    paddingTop: ui.spacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
   group: {
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: ui.radius.md,

@@ -42,6 +42,8 @@ export default function Welcome() {
           }
         />
 
+        <SecondaryButton title="Already have an account? Sign in" onPress={() => router.push('/login')} />
+
         <SecondaryButton
           title="Admin: Skip onboarding"
           onPress={async () => {

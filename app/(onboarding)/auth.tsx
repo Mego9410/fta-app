@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 
 import { Text } from '@/components/Themed';
+import { getPostSignInRoute } from '@/src/auth/postAuthRouting';
 import { isSupabaseConfigured, requireSupabase } from '@/src/supabase/client';
 import { Field } from '@/src/ui/components/Field';
 import { PrimaryButton } from '@/src/ui/components/PrimaryButton';
@@ -60,6 +61,7 @@ export default function Auth() {
         if (error) throw error;
         const userId = data.user?.id;
         if (userId) await ensureProfileExists(userId);
+        router.replace('/(onboarding)/profile');
       } else {
         const { data, error } = await supabase.auth.signInWithPassword({
           email: trimmedEmail,
@@ -68,9 +70,11 @@ export default function Auth() {
         if (error) throw error;
         const userId = data.user?.id;
         if (userId) await ensureProfileExists(userId);
-      }
 
-      router.replace('/(onboarding)/profile');
+        if (!userId) throw new Error('No user returned from sign-in.');
+        const nextRoute = await getPostSignInRoute(supabase, userId);
+        router.replace(nextRoute);
+      }
     } catch (e: any) {
       Alert.alert('Auth failed', e?.message ?? String(e));
     } finally {

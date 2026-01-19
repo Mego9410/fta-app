@@ -27,6 +27,7 @@ export type LocalOnboardingState = {
 const KEY = 'onboardingState_v1';
 const ADMIN_SKIP_KEY = 'adminSkipOnboarding_v1';
 const ADMIN_FORCE_NEXT_OPEN_KEY = 'adminForceOnboardingNextOpen_v1';
+const ADMIN_FORCE_LOGIN_NEXT_OPEN_KEY = 'adminForceLoginNextOpen_v1';
 
 function defaultState(): LocalOnboardingState {
   return {
@@ -103,6 +104,14 @@ export async function setAdminForceOnboardingNextOpenEnabled(enabled: boolean) {
   await setMetaValue(ADMIN_FORCE_NEXT_OPEN_KEY, enabled ? 'true' : 'false');
 }
 
+export async function isAdminForceLoginNextOpenEnabled(): Promise<boolean> {
+  return (await getMetaValue(ADMIN_FORCE_LOGIN_NEXT_OPEN_KEY)) === 'true';
+}
+
+export async function setAdminForceLoginNextOpenEnabled(enabled: boolean) {
+  await setMetaValue(ADMIN_FORCE_LOGIN_NEXT_OPEN_KEY, enabled ? 'true' : 'false');
+}
+
 /**
  * One-shot flag: returns whether forcing was enabled, and clears it.
  * Useful for "force onboarding on next app open".
@@ -113,3 +122,12 @@ export async function consumeAdminForceOnboardingNextOpen(): Promise<boolean> {
   return enabled;
 }
 
+/**
+ * One-shot flag: returns whether forcing was enabled, and clears it.
+ * Useful for "force login on next app open".
+ */
+export async function consumeAdminForceLoginNextOpen(): Promise<boolean> {
+  const enabled = await isAdminForceLoginNextOpenEnabled();
+  if (enabled) await setAdminForceLoginNextOpenEnabled(false);
+  return enabled;
+}
