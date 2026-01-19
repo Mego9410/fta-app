@@ -20,7 +20,8 @@ export function LiquidGlassTabBarBackground({ colorScheme, radius = ui.radius.lg
 
   const overlayColor = isDark ? 'rgba(0,0,0,0.35)' : 'rgba(255,255,255,0.60)';
   const borderColor = isDark ? 'rgba(255,255,255,0.14)' : 'rgba(0,0,0,0.08)';
-  const goldGlow = isDark ? 'rgba(228,173,37,0.10)' : 'rgba(228,173,37,0.08)';
+  // Keep the “warmth” subtle and uniform; avoid a top-only tint that reads as a split bar.
+  const goldWarmth = isDark ? 'rgba(228,173,37,0.05)' : 'rgba(228,173,37,0.04)';
   const fallbackTint = isDark ? Colors.dark.background : Colors.light.background;
 
   return (
@@ -38,7 +39,7 @@ export function LiquidGlassTabBarBackground({ colorScheme, radius = ui.radius.lg
       <View style={[StyleSheet.absoluteFill, { backgroundColor: overlayColor }]} />
 
       {/* Subtle “liquid” warmth */}
-      <View style={[styles.glow, { backgroundColor: goldGlow }]} />
+      <View style={[StyleSheet.absoluteFill, { backgroundColor: goldWarmth }]} />
 
       {/* Hairline edge */}
       <View
@@ -55,15 +56,6 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     overflow: 'hidden',
-  },
-  glow: {
-    position: 'absolute',
-    left: -28,
-    right: -28,
-    top: -18,
-    height: 56,
-    borderRadius: 999,
-    opacity: 0.9,
   },
 });
 

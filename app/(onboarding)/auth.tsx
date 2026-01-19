@@ -59,6 +59,18 @@ export default function Auth() {
       if (mode === 'signUp') {
         const { data, error } = await supabase.auth.signUp({ email: trimmedEmail, password });
         if (error) throw error;
+        // If email confirmations are enabled, Supabase may not create a session immediately.
+        // In that case, we cannot write to RLS-protected tables yet (auth.uid() is null),
+        // so we send the user to sign in after confirming their email.
+        if (!data.session) {
+          Alert.alert(
+            'Check your email',
+            'We sent you a confirmation email. After confirming, return here and sign in.',
+          );
+          router.replace('/login');
+          return;
+        }
+
         const userId = data.user?.id;
         if (userId) await ensureProfileExists(userId);
         router.replace('/(onboarding)/profile');

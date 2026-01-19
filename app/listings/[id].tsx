@@ -2,7 +2,7 @@ import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import * as WebBrowser from 'expo-web-browser';
-import { Alert, Image, Platform, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { Image, Platform, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Text } from '@/components/Themed';
@@ -104,7 +104,12 @@ export default function ListingDetailScreen() {
   const refCode = useMemo(() => {
     if (!listing?.summary) return null;
     const m = listing.summary.match(/Ref\.\s*([A-Za-z0-9-]+)/i);
-    return m?.[1] ?? null;
+    const raw = m?.[1]?.trim() ?? null;
+    if (!raw) return null;
+
+    // Some sources append tenure immediately after the ref (e.g. `Ref. 14-96-3451Leasehold`).
+    const cleaned = raw.replace(/\s*(virtual freehold|leasehold|freehold)\s*$/i, '').trim();
+    return cleaned || null;
   }, [listing]);
 
   if (!listing) {
@@ -289,17 +294,10 @@ export default function ListingDetailScreen() {
           <Pressable
             style={[styles.ctaBtn, { backgroundColor: enquireBg }]}
             onPress={() => {
-              Alert.alert('Request Details', '', [
-                { text: 'Cancel', style: 'cancel' },
-                {
-                  text: 'Yes',
-                  onPress: () =>
-                    router.push({
-                      pathname: '/inquire/[id]',
-                      params: { id: listing.id },
-                    }),
-                },
-              ]);
+              router.push({
+                pathname: '/inquire/[id]',
+                params: { id: listing.id },
+              });
             }}>
             <FontAwesome name="envelope" size={18} color={enquireText} />
             <Text style={[styles.ctaText, { color: enquireText }]}>Request details</Text>

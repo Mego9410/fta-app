@@ -1,20 +1,24 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 
 import { Text } from '@/components/Themed';
 import type { Listing } from '@/src/domain/types';
+import { useSession } from '@/src/auth/useSession';
 import { getListingById } from '@/src/data/listingsRepo';
 import { createLead } from '@/src/data/leadsRepo';
 import { getLocalOnboardingState } from '@/src/data/onboardingLocalRepo';
 import { notifyInquiryByEmail } from '@/src/notifications/inquiryEmail';
-import { isSupabaseConfigured, requireSupabase } from '@/src/supabase/client';
+import { isSupabaseConfigured } from '@/src/supabase/client';
+import { getProfile } from '@/src/supabase/profileRepo';
 import { ScreenHeader } from '@/src/ui/components/ScreenHeader';
 import { ui } from '@/src/ui/theme';
 
 export default function InquireScreen() {
   const params = useLocalSearchParams<{ id?: string }>();
   const id = params.id ?? '';
+  const { user, loading: sessionLoading } = useSession();
 
   const [listing, setListing] = useState<Listing | null>(null);
   const [name, setName] = useState('');
@@ -23,7 +27,7 @@ export default function InquireScreen() {
   const [message, setMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
-  const didPrefill = useRef(false);
+  const didPrefillLocal = useRef(false);
 
   useEffect(() => {
     (async () => {
@@ -35,38 +39,16 @@ export default function InquireScreen() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      // Only prefill once; never overwrite fields the user has already typed into.
-      if (didPrefill.current) return;
-      didPrefill.current = true;
-
       try {
-        if (!isSupabaseConfigured) {
-          const local = await getLocalOnboardingState();
-          if (cancelled) return;
-          if (!name.trim() && local.profile.fullName.trim()) setName(local.profile.fullName.trim());
-          if (!phone.trim() && local.profile.phone.trim()) setPhone(local.profile.phone.trim());
-          return;
-        }
+        // Only prefill local onboarding once; never overwrite fields the user has typed into.
+        if (didPrefillLocal.current) return;
+        didPrefillLocal.current = true;
 
-        const supabase = requireSupabase();
-        const { data } = await supabase.auth.getSession();
-        const session = data.session;
-        if (!session || cancelled) return;
-
-        const authEmail = session.user.email ?? '';
-        if (!email.trim() && authEmail.trim()) setEmail(authEmail.trim());
-
-        const userId = session.user.id;
-        const { data: profile, error } = await supabase
-          .from('profiles')
-          .select('full_name, phone')
-          .eq('id', userId)
-          .maybeSingle();
-        if (error) throw error;
+        const local = await getLocalOnboardingState();
         if (cancelled) return;
-
-        if (!name.trim() && (profile?.full_name ?? '').trim()) setName((profile?.full_name ?? '').trim());
-        if (!phone.trim() && (profile?.phone ?? '').trim()) setPhone((profile?.phone ?? '').trim());
+        if (!name.trim() && local.profile.fullName.trim()) setName(local.profile.fullName.trim());
+        if (!email.trim() && local.profile.email.trim()) setEmail(local.profile.email.trim());
+        if (!phone.trim() && local.profile.phone.trim()) setPhone(local.profile.phone.trim());
       } catch (e) {
         // Prefill is best-effort; ignore failures (offline, not authenticated, etc.).
         console.warn('Failed to prefill enquiry form', e);
@@ -76,12 +58,48 @@ export default function InquireScreen() {
     return () => {
       cancelled = true;
     };
-    // Intentionally run once on mount.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [email, name, phone]);
 
-  const canSubmit =
-    !!listing && name.trim().length > 0 && (email.trim().length > 0 || phone.trim().length > 0);
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      (async () => {
+        if (!isSupabaseConfigured) return;
+        if (sessionLoading) return;
+        if (!user) return;
+        // Stop once we've populated the required fields.
+        if (name.trim() && email.trim() && phone.trim()) return;
+
+        try {
+          const authEmail = user.email ?? '';
+          if (!email.trim() && authEmail.trim()) setEmail(authEmail.trim());
+
+          // Some Supabase auth setups store phone on the auth user (phone-based auth or metadata).
+          const authPhone =
+            (typeof (user as any).phone === 'string' ? String((user as any).phone) : '') ||
+            (typeof (user as any)?.user_metadata?.phone === 'string'
+              ? String((user as any).user_metadata.phone)
+              : '');
+          if (!phone.trim() && authPhone.trim()) setPhone(authPhone.trim());
+
+          const profile = await getProfile(user.id);
+          if (cancelled) return;
+
+          if (!name.trim() && (profile?.full_name ?? '').trim()) setName((profile?.full_name ?? '').trim());
+          const profilePhone = typeof (profile as any)?.phone === 'string' ? String((profile as any).phone) : '';
+          if (!phone.trim() && profilePhone.trim()) setPhone(profilePhone.trim());
+        } catch (e) {
+          console.warn('Failed to prefill enquiry form from Supabase', e);
+        }
+      })();
+
+      return () => {
+        cancelled = true;
+      };
+    }, [email, name, phone, sessionLoading, user]),
+  );
+
+  const canSubmit = !!listing && name.trim().length > 0 && email.trim().length > 0 && phone.trim().length > 0;
 
   if (!id) {
     return (
@@ -134,24 +152,32 @@ export default function InquireScreen() {
 
         <View style={styles.form}>
           <Field label="Name *">
-            <TextInput value={name} onChangeText={setName} style={styles.input} placeholder="Your name" />
+            <TextInput
+              value={name}
+              onChangeText={setName}
+              style={styles.input}
+              placeholder="Your name"
+              placeholderTextColor="rgba(255,255,255,0.6)"
+            />
           </Field>
-          <Field label="Email">
+          <Field label="Email *">
             <TextInput
               value={email}
               onChangeText={setEmail}
               style={styles.input}
               placeholder="you@email.com"
+              placeholderTextColor="rgba(255,255,255,0.6)"
               autoCapitalize="none"
               keyboardType="email-address"
             />
           </Field>
-          <Field label="Phone">
+          <Field label="Phone *">
             <TextInput
               value={phone}
               onChangeText={setPhone}
               style={styles.input}
               placeholder="(555) 555-5555"
+              placeholderTextColor="rgba(255,255,255,0.6)"
               keyboardType="phone-pad"
             />
           </Field>
@@ -161,6 +187,7 @@ export default function InquireScreen() {
               onChangeText={setMessage}
               style={[styles.input, styles.textarea]}
               placeholder="What questions do you have? Preferred time to connect?"
+              placeholderTextColor="rgba(255,255,255,0.6)"
               multiline
             />
           </Field>
@@ -173,7 +200,7 @@ export default function InquireScreen() {
                 Alert.alert(
                   'Missing info',
                   listing
-                    ? 'Please provide your name and either an email or phone number.'
+                    ? 'Please provide your name, email, and phone number.'
                     : 'Please wait for the listing to load, then try again.',
                 );
                 return;
@@ -184,8 +211,8 @@ export default function InquireScreen() {
                   type: 'buyerInquiry',
                   listingId: id,
                   name: name.trim(),
-                  email: email.trim() || null,
-                  phone: phone.trim() || null,
+                  email: email.trim(),
+                  phone: phone.trim(),
                   message: message.trim() || null,
                 });
 
@@ -241,6 +268,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 15,
+    color: 'white',
   },
   textarea: { minHeight: 110, textAlignVertical: 'top' },
   btn: {

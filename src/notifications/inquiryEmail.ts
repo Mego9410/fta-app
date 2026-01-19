@@ -6,6 +6,8 @@ import { formatCurrency } from '@/src/ui/format';
 
 type InquiryLead = Pick<Lead, 'id' | 'name' | 'email' | 'phone' | 'message' | 'createdAt'>;
 
+const DEFAULT_INQUIRY_TO_EMAIL = 'oliver.acton@ft-associates.com';
+
 export type InquiryEmailInput = {
   listing: Listing;
   lead: InquiryLead;
@@ -27,6 +29,7 @@ function buildTextBody({ listing, lead }: InquiryEmailInput) {
   lines.push(`- Industry: ${listing.industry}`);
   lines.push(`- Location: ${listing.locationCity}, ${listing.locationState}`);
   lines.push(`- Asking price: ${formatCurrency(listing.askingPrice)}`);
+  if (listing.moreInfoUrl) lines.push(`- More info: ${listing.moreInfoUrl}`);
   lines.push('');
   lines.push('User');
   lines.push(`- Name: ${lead.name}`);
@@ -56,42 +59,41 @@ export async function notifyInquiryByEmail(input: InquiryEmailInput): Promise<vo
   const body = buildTextBody(input);
 
   if (isSupabaseConfigured) {
-    const supabase = requireSupabase();
-    const res = await supabase.functions.invoke('inquiry-email', {
-      body: {
-        listing: {
-          id: input.listing.id,
-          title: input.listing.title,
-          industry: input.listing.industry,
-          locationCity: input.listing.locationCity,
-          locationState: input.listing.locationState,
-          askingPrice: input.listing.askingPrice,
+    try {
+      const supabase = requireSupabase();
+      const res = await supabase.functions.invoke('inquiry-email', {
+        body: {
+          listing: {
+            id: input.listing.id,
+            title: input.listing.title,
+            industry: input.listing.industry,
+            locationCity: input.listing.locationCity,
+            locationState: input.listing.locationState,
+            askingPrice: input.listing.askingPrice,
+            moreInfoUrl: input.listing.moreInfoUrl ?? null,
+          },
+          lead: {
+            id: input.lead.id,
+            name: input.lead.name,
+            email: input.lead.email,
+            phone: input.lead.phone,
+            message: input.lead.message,
+            createdAt: input.lead.createdAt,
+          },
+          subject,
+          text: body,
         },
-        lead: {
-          id: input.lead.id,
-          name: input.lead.name,
-          email: input.lead.email,
-          phone: input.lead.phone,
-          message: input.lead.message,
-          createdAt: input.lead.createdAt,
-        },
-        subject,
-        text: body,
-      },
-    });
+      });
 
-    if (res.error) {
-      throw new Error(res.error.message);
+      if (!res.error) return;
+      // If the function is misconfigured (common in early setup), fall back to mailto so the user can still send.
+      console.warn('Inquiry email edge function failed; falling back to mailto composer', res.error);
+    } catch (e) {
+      console.warn('Inquiry email invoke threw; falling back to mailto composer', e);
     }
-    return;
   }
 
-  const to = process.env.EXPO_PUBLIC_INQUIRY_TO_EMAIL?.trim();
-  if (!to) {
-    throw new Error(
-      'Email notifications are not configured. Set EXPO_PUBLIC_SUPABASE_URL/EXPO_PUBLIC_SUPABASE_ANON_KEY (recommended) or EXPO_PUBLIC_INQUIRY_TO_EMAIL (mailto fallback).',
-    );
-  }
+  const to = process.env.EXPO_PUBLIC_INQUIRY_TO_EMAIL?.trim() || DEFAULT_INQUIRY_TO_EMAIL;
 
   const url = buildMailtoUrl(to, subject, body);
   const canOpen = await Linking.canOpenURL(url);

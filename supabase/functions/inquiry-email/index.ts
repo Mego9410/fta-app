@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 
 import { corsHeaders } from '../_shared/cors.ts';
@@ -9,6 +10,7 @@ type ListingPayload = {
   locationCity?: string | null;
   locationState?: string | null;
   askingPrice?: number | null;
+  moreInfoUrl?: string | null;
 };
 
 type LeadPayload = {
@@ -49,13 +51,13 @@ serve(async (req) => {
   }
 
   const resendApiKey = Deno.env.get('RESEND_API_KEY') ?? '';
-  const toEmail = Deno.env.get('INQUIRY_TO_EMAIL') ?? '';
+  const toEmail = (Deno.env.get('INQUIRY_TO_EMAIL') ?? '').trim() || 'oliver.acton@ft-associates.com';
   const fromEmail = Deno.env.get('INQUIRY_FROM_EMAIL') ?? '';
 
-  if (!resendApiKey || !toEmail || !fromEmail) {
+  if (!resendApiKey || !fromEmail) {
     return json(500, {
       error:
-        'Email function is not configured. Set RESEND_API_KEY, INQUIRY_TO_EMAIL, and INQUIRY_FROM_EMAIL in Supabase function secrets.',
+        'Email function is not configured. Set RESEND_API_KEY and INQUIRY_FROM_EMAIL in Supabase function secrets. (INQUIRY_TO_EMAIL is optional.)',
     });
   }
 
@@ -76,6 +78,11 @@ serve(async (req) => {
   const subject =
     asString(payload?.subject)?.trim() || `Request details: ${listing.title} (${listing.id})`;
 
+  const askingPriceText =
+    typeof listing.askingPrice === 'number'
+      ? new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(listing.askingPrice)
+      : null;
+
   const text =
     asString(payload?.text)?.trim() ||
     [
@@ -90,7 +97,8 @@ serve(async (req) => {
             listing.locationState ?? ''
           }`.trim()
         : null,
-      typeof listing.askingPrice === 'number' ? `- Asking price: ${listing.askingPrice}` : null,
+      askingPriceText ? `- Asking price: ${askingPriceText}` : null,
+      listing.moreInfoUrl ? `- More info: ${listing.moreInfoUrl}` : null,
       '',
       'User',
       `- Name: ${lead.name}`,
@@ -126,9 +134,10 @@ serve(async (req) => {
         }
         ${
           typeof listing.askingPrice === 'number'
-            ? `<li><strong>Asking price:</strong> ${escapeHtml(String(listing.askingPrice))}</li>`
+            ? `<li><strong>Asking price:</strong> ${escapeHtml(String(askingPriceText ?? listing.askingPrice))}</li>`
             : ''
         }
+        ${listing.moreInfoUrl ? `<li><strong>More info:</strong> ${escapeHtml(String(listing.moreInfoUrl))}</li>` : ''}
       </ul>
 
       <h3 style="margin:18px 0 8px 0;">User</h3>
