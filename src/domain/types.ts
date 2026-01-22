@@ -27,6 +27,15 @@ export type Listing = {
   yearEstablished?: number | null;
   employeesRange?: string | null;
 
+  // Additional practice details from detail pages
+  freeholdValue?: number | null; // "Including Freehold of: £X"
+  reconstitutedProfit?: number | null; // "Reconstituted profit of £X"
+  reconstitutedProfitPercent?: number | null; // Percentage like 38.1%
+  udasCount?: number | null; // "1,461 UDAs"
+  udasPricePerUda?: number | null; // "£30+ per UDA"
+  companyType?: string | null; // "Limited Company – asset sale"
+  detailedInformationText?: string | null; // Raw text block from the detail section
+
   confidential: boolean;
   financingAvailable: boolean;
 
@@ -79,4 +88,6 @@ export type ProfileSettings = {
   pushNewListings: boolean;
   pushSavedActivity: boolean;
   marketingEmails: boolean;
+  emailNotifications: boolean;
+  useSearchFilters: boolean;
 };

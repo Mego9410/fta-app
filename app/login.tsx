@@ -92,9 +92,31 @@ export default function Login() {
             <View style={styles.links}>
               <SecondaryButton
                 title="Forgot password?"
-                onPress={() =>
-                  Alert.alert('Coming soon', 'Password reset will be available once Supabase auth is connected.')
-                }
+                onPress={async () => {
+                  const trimmedEmail = email.trim();
+                  if (!trimmedEmail) {
+                    Alert.alert('Email required', 'Please enter your email address first.');
+                    return;
+                  }
+                  if (!isSupabaseConfigured) {
+                    Alert.alert('Not available', 'Password reset requires Supabase to be configured.');
+                    return;
+                  }
+                  try {
+                    const supabase = requireSupabase();
+                    const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
+                    const { error } = await supabase.auth.resetPasswordForEmail(trimmedEmail, {
+                      redirectTo: `${supabaseUrl}/auth/reset-password`,
+                    });
+                    if (error) throw error;
+                    Alert.alert(
+                      'Check your email',
+                      'We sent you a password reset link. Click it to reset your password.',
+                    );
+                  } catch (e: any) {
+                    Alert.alert('Password reset failed', e?.message ?? String(e));
+                  }
+                }}
                 disabled={busy}
               />
               <SecondaryButton

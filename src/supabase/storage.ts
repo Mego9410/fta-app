@@ -36,13 +36,32 @@ function getWebStorage(): StorageLike {
 function getSecureStore(): StorageLike {
   return {
     async getItem(key) {
-      return await SecureStore.getItemAsync(key);
+      try {
+        return await SecureStore.getItemAsync(key);
+      } catch (error: any) {
+        // SecureStore may fail if user interaction is not allowed (e.g., during background refresh)
+        // Return null to allow Supabase to gracefully handle the missing session
+        console.warn('SecureStore getItem failed, returning null:', error?.message);
+        return null;
+      }
     },
     async setItem(key, value) {
-      await SecureStore.setItemAsync(key, value);
+      try {
+        await SecureStore.setItemAsync(key, value);
+      } catch (error: any) {
+        // SecureStore may fail if user interaction is not allowed (e.g., during background refresh)
+        // Silently fail - the session will be saved on next successful interaction
+        console.warn('SecureStore setItem failed:', error?.message);
+      }
     },
     async removeItem(key) {
-      await SecureStore.deleteItemAsync(key);
+      try {
+        await SecureStore.deleteItemAsync(key);
+      } catch (error: any) {
+        // SecureStore may fail if user interaction is not allowed (e.g., during background refresh)
+        // Silently fail - cleanup will happen on next successful interaction
+        console.warn('SecureStore removeItem failed:', error?.message);
+      }
     },
   };
 }

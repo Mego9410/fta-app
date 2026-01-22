@@ -2,7 +2,7 @@ import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import * as WebBrowser from 'expo-web-browser';
-import { Image, Platform, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { Image, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Text } from '@/components/Themed';
@@ -27,16 +27,36 @@ export default function ListingDetailScreen() {
 
   const [listing, setListing] = useState<Listing | null>(null);
   const [saved, setSaved] = useState(false);
-  const [heroIndex, setHeroIndex] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const load = async () => {
+    if (!id) return;
+    const l = await getListingById(id);
+    setListing(l);
+    if (l) setSaved(await isFavorite(l.id));
+  };
 
   useEffect(() => {
-    (async () => {
-      if (!id) return;
-      const l = await getListingById(id);
-      setListing(l);
-      if (l) setSaved(await isFavorite(l.id));
-    })();
+    load();
   }, [id]);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await load();
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  // HTML parsing disabled - using Supabase data only
+  // useEffect(() => {
+  //   (async () => {
+  //     if (!listing || listing.detailedInformationText) return; // Skip if already have it
+  //     
+  //     // HTML parsing code disabled - relying on Supabase data only
+  //   })();
+  // }, [listing]);
 
   const moreInfoUrl = useMemo(() => {
     if (listing?.moreInfoUrl) return listing.moreInfoUrl;
@@ -51,15 +71,10 @@ export default function ListingDetailScreen() {
   const mapZoom = map?.coords.source === 'exact' ? 11 : map?.coords.source === 'lookup' ? 7 : 6;
 
   const heroSlides = useMemo(() => {
-    const base = listing?.photos ?? [];
     const slides: Array<{ uri: string; kind: 'map' | 'photo' }> = [];
     if (map?.coords) slides.push({ uri: 'tilemap', kind: 'map' });
-    for (const uri of base) {
-      if (!uri) continue;
-      slides.push({ uri, kind: 'photo' });
-    }
     return slides;
-  }, [listing, map?.coords]);
+  }, [map?.coords]);
   const isUnderOffer = useMemo(() => {
     if (!listing) return false;
     return (
@@ -86,8 +101,21 @@ export default function ListingDetailScreen() {
       items.push({ label, value: v });
     };
 
-    // In this dataset the listing title is the marketed “location” (region/city).
+    // In this dataset the listing title is the marketed "location" (region/city).
     push('Location', listing.title);
+
+    // Extract structured info from tags
+    const tags = listing.tags ?? [];
+    const surgeriesTag = tags.find((t) => /^\d+\s+surgeries?$/i.test(t));
+    const tenureTag = tags.find((t) => /^(freehold|leasehold|virtual freehold)$/i.test(t));
+    const incomeTag = tags.find((t) => /^(NHS|Private|Mixed)$/i.test(t));
+
+    if (surgeriesTag) {
+      const match = surgeriesTag.match(/^(\d+)\s+surgeries?$/i);
+      if (match) push('Surgeries', match[1]);
+    }
+    if (tenureTag) push('Tenure', tenureTag);
+    if (incomeTag) push('Income type', incomeTag);
 
     // Financial fields (only when present; asking price always exists)
     push('Asking', formatCurrency(listing.askingPrice));
@@ -95,7 +123,16 @@ export default function ListingDetailScreen() {
     if (listing.cashFlow != null) push('Cash flow', formatCurrency(listing.cashFlow));
     if (listing.ebitda != null) push('EBITDA', formatCurrency(listing.ebitda));
 
-    if (listing.yearEstablished != null) push('Established', String(listing.yearEstablished));
+    // Show years established if available, otherwise show the year
+    if (listing.yearEstablished != null) {
+      const currentYear = new Date().getFullYear();
+      const years = currentYear - listing.yearEstablished;
+      if (years > 0) {
+        push('Established', `${years} year${years !== 1 ? 's' : ''}`);
+      } else {
+        push('Established', String(listing.yearEstablished));
+      }
+    }
     if (listing.employeesRange) push('Employees', listing.employeesRange);
 
     return items;
@@ -112,6 +149,82 @@ export default function ListingDetailScreen() {
     return cleaned || null;
   }, [listing]);
 
+  const practiceDescription = useMemo(() => {
+    // Don't show practice details if we already have detailed information
+    // (to avoid duplication of parsed structured data)
+    if (detailedInformation) return null;
+    
+    if (!listing?.summary) return null;
+    // Extract the description part (after ref and meta line, before "More info:")
+    const parts = listing.summary.split(/\n\n/);
+    // Skip first part (Ref. and meta), get description parts
+    const descParts = parts.slice(1).filter((p) => !p.includes('More info:'));
+    let description = descParts.join('\n\n').trim();
+    
+    // Filter out structured information that gets added by sync function
+    // These patterns indicate parsed/structured data that shouldn't be in practice description
+    const structuredPatterns = [
+      /Established\s+(?:for\s+)?(?:over\s+)?\d+\s+years?/i,
+      /Including\s+Freehold\s+of[:\s]*£/i,
+      /Reconstituted\s+profit\s+of/i,
+      /\d+\s+UDAs?\s+(?:with|@)\s+£/i,
+      /^(?:Limited\s+Company|Sole\s+Trader|Partnership)/i,
+    ];
+    
+    // Remove lines that match structured patterns
+    const filteredLines = description
+      .split('\n')
+      .filter(line => {
+        const trimmed = line.trim();
+        // Skip empty lines
+        if (!trimmed) return false;
+        // Skip lines that match structured data patterns
+        for (const pattern of structuredPatterns) {
+          if (pattern.test(trimmed)) return false;
+        }
+        return true;
+      });
+    
+    description = filteredLines.join('\n').trim();
+    return description || null;
+  }, [listing, detailedInformation]);
+
+  const yearsEstablished = useMemo(() => {
+    if (!listing?.yearEstablished) return null;
+    const currentYear = new Date().getFullYear();
+    const years = currentYear - listing.yearEstablished;
+    return years > 0 ? years : null;
+  }, [listing]);
+
+  const detailedInformation = useMemo(() => {
+    if (!listing) return null;
+    
+    // Helper function to format text as bullet points
+    const formatAsBullets = (text: string): string => {
+      const lines = text
+        .split('\n')
+        .map(line => line.trim())
+        .filter(line => line.length > 0);
+      
+      // If already has bullets, return as-is
+      if (lines.some(line => line.startsWith('•'))) {
+        return lines.join('\n');
+      }
+      
+      // Otherwise, add bullets
+      return lines.map(line => `• ${line}`).join('\n');
+    };
+    
+    // Use the detailed information text block from Supabase database only
+    // HTML parsing is disabled - relying on Supabase data only
+    if (listing.detailedInformationText) {
+      return formatAsBullets(listing.detailedInformationText);
+    }
+    
+    // No HTML parsing - return null if not in database
+    return null;
+  }, [listing]);
+
   if (!listing) {
     return (
       <View style={styles.container}>
@@ -123,62 +236,38 @@ export default function ListingDetailScreen() {
 
   return (
     <View style={styles.root}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={Platform.OS === 'ios' ? Colors[theme].tint : undefined}
+            colors={Platform.OS === 'android' ? [Colors[theme].tint] : undefined}
+          />
+        }
+        contentContainerStyle={styles.scrollContent}>
         <View style={styles.carousel}>
-          <ScrollView
-            horizontal
-            pagingEnabled
-            showsHorizontalScrollIndicator={false}
-            onMomentumScrollEnd={(e) => {
-              const w = Math.max(1, screenWidth);
-              const next = Math.round(e.nativeEvent.contentOffset.x / w);
-              setHeroIndex(next);
-            }}>
-            {heroSlides.length ? (
-              heroSlides.map((s, idx) => (
-                <View key={`${s.kind}-${s.uri}-${idx}`} style={[styles.carouselSlide, { width: screenWidth }]}>
-                  {s.kind === 'map' && map?.coords ? (
-                    <StaticTileMap
-                      latitude={map.coords.latitude}
-                      longitude={map.coords.longitude}
-                      width={Math.max(1, Math.round(screenWidth))}
-                      height={270}
-                      zoom={mapZoom}
-                    />
-                  ) : (
-                    <Image
-                      source={{ uri: s.uri }}
-                      style={styles.carouselImage}
-                      onError={() => {
-                        // If the map provider fails, try the next provider (no placeholder UI).
-                        // (Map slide is tile-based now; this only applies to photos.)
-                      }}
-                    />
-                  )}
-                  <View style={styles.carouselScrim} pointerEvents="none" />
-                  {s.kind === 'map' ? (
-                    <View style={styles.mapBadge} pointerEvents="none">
-                      <Text style={styles.mapBadgeText}>
-                        Location map{map?.coords.source === 'exact' ? '' : ' (approx)'}
-                      </Text>
-                    </View>
-                  ) : null}
-                </View>
-              ))
-            ) : (
-              <View style={[styles.carouselSlide, { width: screenWidth }]}>
-                <View style={[styles.carouselImage, styles.carouselPlaceholder]} />
+          {map?.coords ? (
+            <View style={[styles.carouselSlide, { width: screenWidth }]}>
+              <StaticTileMap
+                latitude={map.coords.latitude}
+                longitude={map.coords.longitude}
+                width={Math.max(1, Math.round(screenWidth))}
+                height={270}
+                zoom={mapZoom}
+              />
+              <View style={styles.carouselScrim} pointerEvents="none" />
+              <View style={styles.mapBadge} pointerEvents="none">
+                <Text style={styles.mapBadgeText}>
+                  Location map{map.coords.source === 'exact' ? '' : ' (approx)'}
+                </Text>
               </View>
-            )}
-          </ScrollView>
-
-          {heroSlides.length > 1 ? (
-            <View style={styles.dots} pointerEvents="none">
-              {heroSlides.slice(0, 8).map((_, i) => (
-                <View key={i} style={[styles.dot, i === heroIndex ? styles.dotActive : null]} />
-              ))}
             </View>
-          ) : null}
+          ) : (
+            <View style={[styles.carouselSlide, { width: screenWidth }]}>
+              <View style={[styles.carouselImage, styles.carouselPlaceholder]} />
+            </View>
+          )}
         </View>
 
         <View style={styles.container}>
@@ -214,51 +303,43 @@ export default function ListingDetailScreen() {
             </View>
           </View>
 
-          <View style={[styles.card, { backgroundColor: cardBg, borderColor: cardBorder }]}>
-            <Text style={styles.cardTitle}>Financial snapshot</Text>
-            <View style={styles.finRow}>
-              <Text style={styles.finLabel}>Asking price</Text>
-              <Text style={styles.finValue}>{formatCurrency(listing.askingPrice)}</Text>
-            </View>
-            {listing.grossRevenue != null ? (
-              <View style={styles.finRow}>
-                <Text style={styles.finLabel}>Fee income</Text>
-                <Text style={styles.finValue}>{formatCurrency(listing.grossRevenue)}</Text>
-              </View>
-            ) : null}
-            {listing.cashFlow != null ? (
-              <View style={styles.finRow}>
-                <Text style={styles.finLabel}>Cash flow</Text>
-                <Text style={styles.finValue}>{formatCurrency(listing.cashFlow)}</Text>
-              </View>
-            ) : null}
-            {listing.ebitda != null ? (
-              <View style={styles.finRow}>
-                <Text style={styles.finLabel}>EBITDA</Text>
-                <Text style={styles.finValue}>{formatCurrency(listing.ebitda)}</Text>
-              </View>
-            ) : null}
+          {(detailedInformation || moreInfoUrl) ? (
+            <View style={[styles.card, { backgroundColor: cardBg, borderColor: cardBorder }]}>
+              <Text style={styles.cardTitle}>Detailed Information</Text>
+              {detailedInformation ? (
+                <Text style={styles.detailedInfoText}>{detailedInformation}</Text>
+              ) : null}
 
-            {moreInfoUrl ? (
-              <Pressable
-                style={[
-                  styles.moreInfoBtn,
-                  {
-                    borderColor: cardBorder,
-                    backgroundColor: theme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
-                  },
-                ]}
-                onPress={async () => {
-                  if (Platform.OS === 'web') {
-                    window.open(moreInfoUrl, '_blank', 'noopener,noreferrer');
-                    return;
-                  }
-                  await WebBrowser.openBrowserAsync(moreInfoUrl);
-                }}>
-                <Text style={styles.moreInfoText}>More info</Text>
-              </Pressable>
-            ) : null}
-          </View>
+              {moreInfoUrl ? (
+                <Pressable
+                  style={[
+                    styles.moreInfoBtn,
+                    {
+                      borderColor: cardBorder,
+                      backgroundColor: theme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+                      marginTop: detailedInformation ? 12 : 0,
+                    },
+                  ]}
+                  onPress={async () => {
+                    if (Platform.OS === 'web') {
+                      window.open(moreInfoUrl, '_blank', 'noopener,noreferrer');
+                      return;
+                    }
+                    await WebBrowser.openBrowserAsync(moreInfoUrl);
+                  }}>
+                  <Text style={styles.moreInfoText}>More info</Text>
+                </Pressable>
+              ) : null}
+            </View>
+          ) : null}
+
+          {practiceDescription ? (
+            <View style={[styles.card, { backgroundColor: cardBg, borderColor: cardBorder }]}>
+              <Text style={styles.cardTitle}>Practice details</Text>
+              <Text style={styles.body}>{practiceDescription}</Text>
+            </View>
+          ) : null}
+
         </View>
       </ScrollView>
 
@@ -452,6 +533,12 @@ const styles = StyleSheet.create({
     fontSize: 15,
     opacity: 0.9,
     lineHeight: 21,
+  },
+  detailedInfoText: {
+    fontSize: 15,
+    opacity: 0.9,
+    lineHeight: 22,
+    fontWeight: '600',
   },
   moreInfoBtn: {
     marginTop: 6,

@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
-import { FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
+import { FlatList, Platform, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
 
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { Text } from '@/components/Themed';
+import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
 import type { TestimonialPreview } from '@/src/data/webContent/testimonials';
 import { fetchLatestTestimonials } from '@/src/data/webContent/testimonials';
@@ -112,7 +113,14 @@ export default function TestimonialsScreen() {
       <FlatList
         data={rows}
         keyExtractor={(t) => t.id}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={Platform.OS === 'ios' ? Colors[theme].tint : undefined}
+            colors={Platform.OS === 'android' ? [Colors[theme].tint] : undefined}
+          />
+        }
         contentContainerStyle={{
           paddingBottom: bottomPad,
           paddingHorizontal: ui.layout.screenPaddingX,

@@ -12,6 +12,23 @@ import { ui } from '@/src/ui/theme';
 import { getListingMapCoords } from '@/src/ui/map/listingMap';
 import { StaticTileMap } from '@/src/ui/map/StaticTileMap';
 
+function extractRefCode(listing: Listing): string | null {
+  // Extract from summary (e.g., "Ref. 14-96-3452")
+  if (listing.summary) {
+    const m = listing.summary.match(/Ref\.\s*([A-Za-z0-9-]+)/i);
+    const raw = m?.[1]?.trim() ?? null;
+    if (!raw) return null;
+    // Some sources append tenure immediately after the ref (e.g., `Ref. 14-96-3451Leasehold`).
+    const cleaned = raw.replace(/\s*(virtual freehold|leasehold|freehold)\s*$/i, '').trim();
+    return cleaned || null;
+  }
+  // Fallback: extract from ID if it's in the format ftaweb-REF
+  if (listing.id.startsWith('ftaweb-')) {
+    return listing.id.replace('ftaweb-', '');
+  }
+  return null;
+}
+
 export function ListingCard({
   listing,
   isSaved,
@@ -34,6 +51,7 @@ export function ListingCard({
     (listing.tags ?? []).some((t) => t.trim().toLowerCase() === 'under offer') ||
     /Status:\s*Under Offer/i.test(listing.summary ?? '');
   const accent = Colors[theme].tint;
+  const refCode = useMemo(() => extractRefCode(listing), [listing]);
   return (
     <Pressable style={[styles.card, { borderColor: cardBorder }]} onPress={onPress}>
       <View
@@ -53,21 +71,23 @@ export function ListingCard({
           style={[styles.imageScrim, { backgroundColor: showingMap ? 'rgba(0,0,0,0.30)' : 'rgba(0,0,0,0.15)' }]}
           pointerEvents="none"
         />
+        <View style={styles.topLeftBadges}>
+          {coords ? (
+            <View style={styles.mapBadgeTopLeft} pointerEvents="none">
+              <Text style={styles.mapBadgeText}>Map{coords.source === 'exact' ? '' : ' (approx)'}</Text>
+            </View>
+          ) : null}
+          {isUnderOffer ? (
+            <View style={[styles.statusBanner, { backgroundColor: accent }]}>
+              <Text style={styles.statusBannerText}>UNDER OFFER</Text>
+            </View>
+          ) : null}
+        </View>
         <View style={styles.imageTopRow}>
           <View style={styles.badgesLeft}>
-            {isUnderOffer ? (
-              <View style={[styles.statusBanner, { backgroundColor: accent }]}>
-                <Text style={styles.statusBannerText}>UNDER OFFER</Text>
-              </View>
-            ) : null}
             {listing.featured ? (
               <View style={styles.badge}>
                 <Text style={styles.badgeText}>Featured</Text>
-              </View>
-            ) : null}
-            {coords ? (
-              <View style={styles.mapBadge} pointerEvents="none">
-                <Text style={styles.mapBadgeText}>Map{coords.source === 'exact' ? '' : ' (approx)'}</Text>
               </View>
             ) : null}
           </View>
@@ -87,17 +107,21 @@ export function ListingCard({
         </View>
 
         <View style={styles.imageBottom}>
-          <View style={styles.pricePill}>
-            <Text style={styles.pricePillText}>{formatCurrency(listing.askingPrice)}</Text>
+          <View style={styles.imageBottomLeft}>
+            <Text style={styles.imageTitle} numberOfLines={2}>
+              {listing.title}
+            </Text>
+            <View style={styles.pricePill}>
+              <Text style={styles.pricePillText}>{formatCurrency(listing.askingPrice)}</Text>
+            </View>
           </View>
-          <Text style={styles.imageTitle} numberOfLines={2}>
-            {listing.title}
-          </Text>
-          <Text style={styles.imageMeta} numberOfLines={1}>
-            {listing.title?.trim().toLowerCase() === listing.locationCity?.trim().toLowerCase()
-              ? `${listing.industry} • ${listing.locationState}`
-              : `${listing.locationCity}, ${listing.locationState} • ${listing.industry}`}
-          </Text>
+          {refCode ? (
+            <View style={styles.refCodeBadgeBottom}>
+              <Text style={styles.refCodeBottom} numberOfLines={1}>
+                Ref. {refCode}
+              </Text>
+            </View>
+          ) : null}
         </View>
       </View>
 
@@ -122,6 +146,7 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     backgroundColor: 'rgba(255,255,255,0.01)',
     marginBottom: 14,
+    marginHorizontal: 4,
     ...ui.shadow.card,
   },
   imageWrap: {
@@ -140,7 +165,16 @@ const styles = StyleSheet.create({
   imageScrim: {
     ...StyleSheet.absoluteFillObject,
   },
-  mapBadge: {
+  topLeftBadges: {
+    position: 'absolute',
+    top: 10,
+    left: 10,
+    flexDirection: 'column',
+    gap: 8,
+    alignItems: 'flex-start',
+    zIndex: 10,
+  },
+  mapBadgeTopLeft: {
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: ui.radius.pill,
@@ -207,7 +241,29 @@ const styles = StyleSheet.create({
     left: 12,
     right: 12,
     bottom: 12,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+    gap: 12,
+  },
+  imageBottomLeft: {
+    flex: 1,
     gap: 6,
+  },
+  refCodeBadgeBottom: {
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: ui.radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.22)',
+    alignSelf: 'flex-end',
+  },
+  refCodeBottom: {
+    color: 'white',
+    fontSize: 11,
+    fontWeight: '800',
+    opacity: 0.95,
   },
   pricePill: {
     alignSelf: 'flex-start',
@@ -225,11 +281,6 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 16,
     fontWeight: '900',
-  },
-  imageMeta: {
-    color: 'rgba(255,255,255,0.85)',
-    fontSize: 13,
-    fontWeight: '700',
   },
   body: {
     padding: 14,

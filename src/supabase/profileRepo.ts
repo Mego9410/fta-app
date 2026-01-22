@@ -1,4 +1,4 @@
-import { supabase } from '@/src/supabase/client';
+import { requireSupabase } from '@/src/supabase/client';
 
 export type ProfileRow = {
   id: string;
@@ -29,6 +29,7 @@ export type UserPreferencesRow = {
 };
 
 export async function ensureProfile(userId: string) {
+  const supabase = requireSupabase();
   const { error } = await supabase.from('profiles').upsert(
     {
       id: userId,
@@ -42,6 +43,7 @@ export async function ensureProfile(userId: string) {
 }
 
 export async function getProfile(userId: string): Promise<ProfileRow | null> {
+  const supabase = requireSupabase();
   const { data, error } = await supabase
     .from('profiles')
     .select(
@@ -54,6 +56,7 @@ export async function getProfile(userId: string): Promise<ProfileRow | null> {
 }
 
 export async function updateProfile(userId: string, patch: Partial<Omit<ProfileRow, 'id'>>) {
+  const supabase = requireSupabase();
   const { error } = await supabase
     .from('profiles')
     .update({ ...patch, updated_at: new Date().toISOString() })
@@ -62,6 +65,7 @@ export async function updateProfile(userId: string, patch: Partial<Omit<ProfileR
 }
 
 export async function getBuyerProfile(userId: string): Promise<BuyerProfileRow | null> {
+  const supabase = requireSupabase();
   const { data, error } = await supabase
     .from('buyer_profiles')
     .select('user_id, industries, budget_min, budget_max, timeline, updated_at')
@@ -72,6 +76,7 @@ export async function getBuyerProfile(userId: string): Promise<BuyerProfileRow |
 }
 
 export async function upsertBuyerProfile(userId: string, patch: Partial<Omit<BuyerProfileRow, 'user_id'>>) {
+  const supabase = requireSupabase();
   const { error } = await supabase.from('buyer_profiles').upsert(
     {
       user_id: userId,
@@ -88,6 +93,7 @@ export async function upsertBuyerProfile(userId: string, patch: Partial<Omit<Buy
 }
 
 export async function getUserPreferences(userId: string): Promise<UserPreferencesRow | null> {
+  const supabase = requireSupabase();
   const { data, error } = await supabase
     .from('user_preferences')
     .select('user_id, search_radius_km, push_notifications_enabled, email_notifications_enabled, updated_at')
@@ -101,6 +107,7 @@ export async function upsertUserPreferences(
   userId: string,
   patch: Partial<Omit<UserPreferencesRow, 'user_id'>>,
 ) {
+  const supabase = requireSupabase();
   const { error } = await supabase.from('user_preferences').upsert(
     {
       user_id: userId,

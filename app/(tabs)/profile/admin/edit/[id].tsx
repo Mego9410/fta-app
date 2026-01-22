@@ -8,7 +8,7 @@ import type { Listing } from '@/src/domain/types';
 import { getListingById, setListingStatus, upsertListing } from '@/src/data/listingsRepo';
 import { hydrateAdminSession, isAdminAuthed } from '@/src/ui/admin/adminSession';
 import { getAdminAccess } from '@/src/supabase/admin';
-import { isSupabaseConfigured } from '@/src/supabase/client';
+import { isProdBuild, isSupabaseConfigured } from '@/src/supabase/client';
 import { Field } from '@/src/ui/components/Field';
 import { PrimaryButton } from '@/src/ui/components/PrimaryButton';
 import { SecondaryButton } from '@/src/ui/components/SecondaryButton';
@@ -28,6 +28,10 @@ export default function AdminEditListingScreen() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      if (isProdBuild) {
+        router.replace('/profile/admin');
+        return;
+      }
       if (!isSupabaseConfigured) {
         await hydrateAdminSession();
         if (!isAdminAuthed()) {
@@ -47,6 +51,20 @@ export default function AdminEditListingScreen() {
       cancelled = true;
     };
   }, []);
+
+  if (isProdBuild) {
+    return (
+      <View style={styles.container}>
+        <ScreenHeader
+          mode="tabs"
+          fallbackHref="/profile/admin"
+          title="Edit Listing"
+          subtitle="Listing editing is disabled in production (listings are synced from the website)."
+          style={{ paddingHorizontal: 0 }}
+        />
+      </View>
+    );
+  }
 
   useEffect(() => {
     (async () => {

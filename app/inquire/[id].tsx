@@ -8,10 +8,12 @@ import type { Listing } from '@/src/domain/types';
 import { useSession } from '@/src/auth/useSession';
 import { getListingById } from '@/src/data/listingsRepo';
 import { createLead } from '@/src/data/leadsRepo';
+import { enqueueOutbox, flushOutbox } from '@/src/data/outboxRepo';
 import { getLocalOnboardingState } from '@/src/data/onboardingLocalRepo';
-import { notifyInquiryByEmail } from '@/src/notifications/inquiryEmail';
+import { buildInquiryEmailPayload, notifyInquiryByEmail } from '@/src/notifications/inquiryEmail';
 import { isSupabaseConfigured } from '@/src/supabase/client';
 import { getProfile } from '@/src/supabase/profileRepo';
+import { track } from '@/src/telemetry/analytics';
 import { ScreenHeader } from '@/src/ui/components/ScreenHeader';
 import { ui } from '@/src/ui/theme';
 
@@ -220,11 +222,19 @@ export default function InquireScreen() {
                   await notifyInquiryByEmail({ listing: listing!, lead });
                 } catch (e) {
                   console.warn('Inquiry email notification failed', e);
+                  try {
+                    await enqueueOutbox('email_inquiry', buildInquiryEmailPayload({ listing: listing!, lead }));
+                    flushOutbox({ limit: 5 }).catch(() => {});
+                  } catch {
+                    // ignore enqueue failure; the lead itself may still be stored locally/supabase
+                  }
                   Alert.alert(
                     'Enquiry submitted',
-                    'We saved your enquiry, but could not send the email notification. If you don’t hear back soon, please contact us directly.',
+                    'We saved your enquiry and will send the notification when we’re back online. If you don’t hear back soon, please contact us directly.',
                   );
                 }
+
+                track('inquiry_submitted', { listingId: id }).catch(() => {});
                 setSubmitted(true);
               } finally {
                 setSubmitting(false);

@@ -5,10 +5,21 @@ import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useState } from 'react';
 import 'react-native-reanimated';
+import { AppState, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { router } from 'expo-router';
+import * as Notifications from 'expo-notifications';
 
 import { useColorScheme } from '@/components/useColorScheme';
+import { Text } from '@/components/Themed';
 import { initDb } from '@/src/data/db';
+import { maybeSyncListingsFromWebsite } from '@/src/data/listingsSync';
+import { flushOutbox } from '@/src/data/outboxRepo';
+import { registerBackgroundFetch } from '@/src/data/backgroundTask';
+import { setupNotificationHandlers } from '@/src/notifications/notifications';
+import { isSupabaseRequiredButMissing } from '@/src/supabase/client';
+import { initTelemetry } from '@/src/telemetry';
+import { ui } from '@/src/ui/theme';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -30,6 +41,7 @@ export default function RootLayout() {
   });
   const [dbReady, setDbReady] = useState(false);
   const [dbError, setDbError] = useState<unknown>(null);
+  const [showConfigError, setShowConfigError] = useState(false);
 
   // Expo Router uses Error Boundaries to catch errors in the navigation tree.
   useEffect(() => {
@@ -58,11 +70,79 @@ export default function RootLayout() {
   }, [loaded, dbReady]);
 
   useEffect(() => {
+    if (!loaded || !dbReady) return;
+    // Background listings sync (throttled) so users see fresh listings without Admin action.
+    maybeSyncListingsFromWebsite().catch(() => {
+      // best-effort: keep cached listings if it fails
+    });
+    flushOutbox().catch(() => {
+      // best-effort: will retry next time the app becomes active
+    });
+    // Register background fetch task for new listing notifications
+    registerBackgroundFetch().catch(() => {
+      // best-effort: background fetch may not be available on all platforms
+    });
+    // Initialize telemetry with error handling (SecureStore may fail during background refresh)
+    try {
+      initTelemetry();
+    } catch (error) {
+      // Silently fail - telemetry is non-critical
+      console.warn('Telemetry initialization failed:', error);
+    }
+  }, [dbReady, loaded]);
+
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        flushOutbox().catch(() => {});
+      }
+    });
+    return () => sub.remove();
+  }, []);
+
+  // Set up notification handlers
+  useEffect(() => {
+    const unsubscribe = setupNotificationHandlers(
+      // Handle notifications received while app is foregrounded
+      (notification) => {
+        console.log('Notification received:', notification);
+      },
+      // Handle user tapping on a notification
+      (response) => {
+        const data = response.notification.request.content.data;
+        if (data?.type === 'new_listing' && data?.listingId) {
+          router.push(`/listings/${data.listingId}`);
+        }
+      },
+    );
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
     if (dbError) throw dbError;
   }, [dbError]);
 
   if (!loaded || !dbReady) {
     return null;
+  }
+
+  if (isSupabaseRequiredButMissing) {
+    return (
+      <View style={styles.misconfigPage}>
+        <Text style={styles.misconfigTitle}>App configuration error</Text>
+        <Text style={styles.misconfigBody}>
+          This build is missing required server configuration. Please contact support or reinstall a production build.
+        </Text>
+        <Pressable style={styles.misconfigBtn} onPress={() => setShowConfigError((v) => !v)}>
+          <Text style={styles.misconfigBtnText}>{showConfigError ? 'Hide details' : 'Show details'}</Text>
+        </Pressable>
+        {showConfigError ? (
+          <Text style={styles.misconfigDetails}>
+            Missing: EXPO_PUBLIC_SUPABASE_URL and/or EXPO_PUBLIC_SUPABASE_ANON_KEY
+          </Text>
+        ) : null}
+      </View>
+    );
   }
 
   return <RootLayoutNav />;
@@ -96,3 +176,24 @@ function RootLayoutNav() {
     </ThemeProvider>
   );
 }
+
+const styles = StyleSheet.create({
+  misconfigPage: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: ui.layout.screenPaddingX,
+    paddingVertical: ui.layout.screenPaddingY,
+    gap: ui.spacing.md,
+  },
+  misconfigTitle: { fontSize: 22, fontWeight: '900' },
+  misconfigBody: { fontSize: 14, opacity: 0.75, lineHeight: 20, fontWeight: '600' },
+  misconfigBtn: {
+    alignSelf: 'flex-start',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    backgroundColor: 'rgba(0,0,0,0.08)',
+  },
+  misconfigBtnText: { fontSize: 13, fontWeight: '800' },
+  misconfigDetails: { fontSize: 12, opacity: 0.7, fontWeight: '700' },
+});

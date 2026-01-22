@@ -42,6 +42,32 @@ function buildTextBody({ listing, lead }: InquiryEmailInput) {
   return lines.join('\n');
 }
 
+export function buildInquiryEmailPayload(input: InquiryEmailInput) {
+  const subject = buildSubject(input.listing);
+  const text = buildTextBody(input);
+  return {
+    listing: {
+      id: input.listing.id,
+      title: input.listing.title,
+      industry: input.listing.industry,
+      locationCity: input.listing.locationCity,
+      locationState: input.listing.locationState,
+      askingPrice: input.listing.askingPrice,
+      moreInfoUrl: input.listing.moreInfoUrl ?? null,
+    },
+    lead: {
+      id: input.lead.id,
+      name: input.lead.name,
+      email: input.lead.email,
+      phone: input.lead.phone,
+      message: input.lead.message,
+      createdAt: input.lead.createdAt,
+    },
+    subject,
+    text,
+  };
+}
+
 function buildMailtoUrl(to: string, subject: string, body: string) {
   // Use encodeURIComponent to preserve newlines and punctuation.
   return `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
@@ -55,34 +81,13 @@ function buildMailtoUrl(to: string, subject: string, body: string) {
  * - Otherwise: falls back to opening a pre-filled mail composer via `mailto:`.
  */
 export async function notifyInquiryByEmail(input: InquiryEmailInput): Promise<void> {
-  const subject = buildSubject(input.listing);
-  const body = buildTextBody(input);
+  const payload = buildInquiryEmailPayload(input);
 
   if (isSupabaseConfigured) {
     try {
       const supabase = requireSupabase();
       const res = await supabase.functions.invoke('inquiry-email', {
-        body: {
-          listing: {
-            id: input.listing.id,
-            title: input.listing.title,
-            industry: input.listing.industry,
-            locationCity: input.listing.locationCity,
-            locationState: input.listing.locationState,
-            askingPrice: input.listing.askingPrice,
-            moreInfoUrl: input.listing.moreInfoUrl ?? null,
-          },
-          lead: {
-            id: input.lead.id,
-            name: input.lead.name,
-            email: input.lead.email,
-            phone: input.lead.phone,
-            message: input.lead.message,
-            createdAt: input.lead.createdAt,
-          },
-          subject,
-          text: body,
-        },
+        body: payload,
       });
 
       if (!res.error) return;
@@ -95,7 +100,7 @@ export async function notifyInquiryByEmail(input: InquiryEmailInput): Promise<vo
 
   const to = process.env.EXPO_PUBLIC_INQUIRY_TO_EMAIL?.trim() || DEFAULT_INQUIRY_TO_EMAIL;
 
-  const url = buildMailtoUrl(to, subject, body);
+  const url = buildMailtoUrl(to, payload.subject, payload.text);
   const canOpen = await Linking.canOpenURL(url);
   if (!canOpen) {
     throw new Error('Could not open mail composer on this device.');

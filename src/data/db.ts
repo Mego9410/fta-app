@@ -70,6 +70,13 @@ export async function initDb() {
       yearEstablished INTEGER,
       employeesRange TEXT,
 
+      freeholdValue INTEGER,
+      reconstitutedProfit INTEGER,
+      reconstitutedProfitPercent REAL,
+      udasCount INTEGER,
+      udasPricePerUda INTEGER,
+      companyType TEXT,
+
       confidential INTEGER NOT NULL,
       financingAvailable INTEGER NOT NULL,
 
@@ -115,6 +122,18 @@ export async function initDb() {
 
     CREATE INDEX IF NOT EXISTS idx_leads_type ON leads(type);
     CREATE INDEX IF NOT EXISTS idx_leads_listingId ON leads(listingId);
+
+    CREATE TABLE IF NOT EXISTS outbox (
+      id TEXT PRIMARY KEY NOT NULL,
+      type TEXT NOT NULL,
+      payloadJson TEXT NOT NULL,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      lastError TEXT,
+      nextAttemptAt TEXT,
+      createdAt TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_outbox_nextAttemptAt ON outbox(nextAttemptAt);
   `);
 
   // Lightweight schema migration(s)
@@ -134,6 +153,30 @@ export async function initDb() {
   const hasLongitude = listingsCols.some((c) => c.name === 'longitude');
   if (!hasLongitude) {
     await db.execAsync(`ALTER TABLE listings ADD COLUMN longitude REAL;`);
+  }
+  const hasFreeholdValue = listingsCols.some((c) => c.name === 'freeholdValue');
+  if (!hasFreeholdValue) {
+    await db.execAsync(`ALTER TABLE listings ADD COLUMN freeholdValue INTEGER;`);
+  }
+  const hasReconstitutedProfit = listingsCols.some((c) => c.name === 'reconstitutedProfit');
+  if (!hasReconstitutedProfit) {
+    await db.execAsync(`ALTER TABLE listings ADD COLUMN reconstitutedProfit INTEGER;`);
+  }
+  const hasReconstitutedProfitPercent = listingsCols.some((c) => c.name === 'reconstitutedProfitPercent');
+  if (!hasReconstitutedProfitPercent) {
+    await db.execAsync(`ALTER TABLE listings ADD COLUMN reconstitutedProfitPercent REAL;`);
+  }
+  const hasUdasCount = listingsCols.some((c) => c.name === 'udasCount');
+  if (!hasUdasCount) {
+    await db.execAsync(`ALTER TABLE listings ADD COLUMN udasCount INTEGER;`);
+  }
+  const hasUdasPricePerUda = listingsCols.some((c) => c.name === 'udasPricePerUda');
+  if (!hasUdasPricePerUda) {
+    await db.execAsync(`ALTER TABLE listings ADD COLUMN udasPricePerUda INTEGER;`);
+  }
+  const hasCompanyType = listingsCols.some((c) => c.name === 'companyType');
+  if (!hasCompanyType) {
+    await db.execAsync(`ALTER TABLE listings ADD COLUMN companyType TEXT;`);
   }
 
   const leadsCols = await db.getAllAsync<{ name: string }>('PRAGMA table_info(leads);');

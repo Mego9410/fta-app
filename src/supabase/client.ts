@@ -9,6 +9,10 @@ const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
 
 export const isSupabaseConfigured = !!supabaseUrl && !!supabaseAnonKey;
 
+export const isProdBuild = !__DEV__;
+export const isDemoMode = __DEV__ && !isSupabaseConfigured;
+export const isSupabaseRequiredButMissing = isProdBuild && !isSupabaseConfigured;
+
 export const supabase = isSupabaseConfigured
   ? createClient(supabaseUrl!, supabaseAnonKey!, {
       auth: {

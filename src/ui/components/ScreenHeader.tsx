@@ -23,7 +23,7 @@ export function ScreenHeader({
   style?: ViewStyle;
 }) {
   const insets = useSafeAreaInsets();
-  const paddingTop = mode === 'tabs' ? insets.top + ui.spacing.lg : ui.spacing.lg;
+  const paddingTop = mode === 'tabs' ? insets.top + 16 : ui.spacing.lg;
 
   return (
     <View style={[styles.wrap, { paddingTop }, style]}>

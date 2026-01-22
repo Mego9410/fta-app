@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { FlatList, Image, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, FlatList, Image, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import FontAwesome from '@expo/vector-icons/FontAwesome';
@@ -9,6 +9,7 @@ import { Text } from '@/components/Themed';
 import Colors from '@/constants/Colors';
 import type { Listing } from '@/src/domain/types';
 import { listListings } from '@/src/data/listingsRepo';
+import { getListingsSyncMeta, maybeSyncListingsFromWebsite } from '@/src/data/listingsSync';
 import { useColorScheme } from '@/components/useColorScheme';
 import { Pill } from '@/src/ui/components/Pill';
 import { PrimaryButton } from '@/src/ui/components/PrimaryButton';
@@ -19,6 +20,24 @@ import { fetchLatestArticlePreviews, type ArticlePreview } from '@/src/data/webC
 import { fetchLatestTestimonials, type TestimonialPreview } from '@/src/data/webContent/testimonials';
 import { getListingMapCoords } from '@/src/ui/map/listingMap';
 import { StaticTileMap } from '@/src/ui/map/StaticTileMap';
+import { getSurgeriesCountFromTags } from '@/src/ui/searchFilters';
+
+function extractRefCode(listing: Listing): string | null {
+  // Extract from summary (e.g., "Ref. 14-96-3452")
+  if (listing.summary) {
+    const m = listing.summary.match(/Ref\.\s*([A-Za-z0-9-]+)/i);
+    const raw = m?.[1]?.trim() ?? null;
+    if (!raw) return null;
+    // Some sources append tenure immediately after the ref (e.g., `Ref. 14-96-3451Leasehold`).
+    const cleaned = raw.replace(/\s*(virtual freehold|leasehold|freehold)\s*$/i, '').trim();
+    return cleaned || null;
+  }
+  // Fallback: extract from ID if it's in the format ftaweb-REF
+  if (listing.id.startsWith('ftaweb-')) {
+    return listing.id.replace('ftaweb-', '');
+  }
+  return null;
+}
 
 export default function HomeScreen() {
   const theme = useColorScheme() ?? 'light';
@@ -32,12 +51,59 @@ export default function HomeScreen() {
   const [articles, setArticles] = useState<ArticlePreview[]>([]);
   const [testimonials, setTestimonials] = useState<TestimonialPreview[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [syncLine, setSyncLine] = useState<string>('');
 
   const load = useCallback(async () => {
+    await maybeSyncListingsFromWebsite();
+
     // Listings: show a small "new listings" sampler. Search is the main discovery surface.
     const rows = await listListings({ status: 'active' });
-    const newest = [...rows].sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt)).slice(0, 5);
+    
+    // Sort: under offer at bottom, then by last 4 digits of reference number
+    const sorted = [...rows].sort((a, b) => {
+      // Check if listings are under offer
+      const aUnderOffer =
+        (a.tags ?? []).some((t) => t.trim().toLowerCase() === 'under offer') ||
+        /Status:\s*Under Offer/i.test(a.summary ?? '');
+      const bUnderOffer =
+        (b.tags ?? []).some((t) => t.trim().toLowerCase() === 'under offer') ||
+        /Status:\s*Under Offer/i.test(b.summary ?? '');
+
+      // Sort: non-under-offer first (0), then under-offer (1)
+      if (aUnderOffer !== bUnderOffer) {
+        return aUnderOffer ? 1 : -1;
+      }
+
+      // Within each group, sort by last 4 digits of reference number
+      const getLast4Digits = (refCode: string | null): number => {
+        if (!refCode) return 9999; // Put listings without ref codes at the end
+        // Extract all digits from the ref code
+        const digits = refCode.replace(/\D/g, '');
+        if (digits.length === 0) return 9999;
+        // Get last 4 digits, pad with zeros if needed
+        const last4 = digits.slice(-4).padStart(4, '0');
+        return parseInt(last4, 10);
+      };
+
+      const aRefCode = extractRefCode(a);
+      const bRefCode = extractRefCode(b);
+      const aLast4 = getLast4Digits(aRefCode);
+      const bLast4 = getLast4Digits(bRefCode);
+
+      return bLast4 - aLast4;
+    });
+    
+    const newest = sorted.slice(0, 5);
     setNewListings(newest);
+
+    const meta = await getListingsSyncMeta();
+    if (meta.lastAt) {
+      const d = new Date(meta.lastAt);
+      const dateText = Number.isNaN(d.getTime()) ? meta.lastAt : d.toLocaleString();
+      setSyncLine(`Listings updated: ${dateText}`);
+    } else {
+      setSyncLine('');
+    }
 
     const [articleRows, testimonialRows] = await Promise.all([
       fetchLatestArticlePreviews({ limit: 3 }),
@@ -54,6 +120,7 @@ export default function HomeScreen() {
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
+      await maybeSyncListingsFromWebsite({ force: true });
       await load();
     } finally {
       setRefreshing(false);
@@ -62,8 +129,20 @@ export default function HomeScreen() {
 
   return (
     <View style={styles.container}>
+      {refreshing && (
+        <View style={[styles.refreshIndicator, { top: insets.top + 10 }]}>
+          <ActivityIndicator size="small" color={Colors[theme].tint} />
+        </View>
+      )}
       <ScrollView
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={Platform.OS === 'ios' ? Colors[theme].tint : undefined}
+            colors={Platform.OS === 'android' ? [Colors[theme].tint] : undefined}
+          />
+        }
         contentContainerStyle={{
           paddingTop: insets.top + ui.spacing.lg,
           paddingBottom: bottomPad,
@@ -105,7 +184,7 @@ export default function HomeScreen() {
         <SectionCard
           borderColor={cardBorder}
           title="New listings"
-          subtitle="Fresh opportunities added recently."
+          subtitle={syncLine || 'Fresh opportunities added recently.'}
           actionLabel="View all"
           onAction={() => router.push('/(tabs)/search')}>
           {newListings.length ? (
@@ -222,6 +301,14 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  refreshIndicator: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    zIndex: 1000,
+    paddingVertical: 8,
   },
   brandLogo: {
     width: 260,
@@ -455,9 +542,9 @@ function ListingPreviewCard({
   onPress: () => void;
 }) {
   const theme = useColorScheme() ?? 'light';
-  const meta = `${listing.locationCity}, ${listing.locationState} • ${listing.industry}`;
   const subtitle = theme === 'dark' ? 'rgba(255,255,255,0.72)' : 'rgba(0,0,0,0.65)';
   const price = formatCurrency(listing.askingPrice);
+  const refCode = extractRefCode(listing);
   return (
     <Pressable onPress={onPress} style={[cardStyles.card, { borderColor }]}>
       <View style={cardStyles.row}>
@@ -465,9 +552,11 @@ function ListingPreviewCard({
           <Text style={cardStyles.title} numberOfLines={2}>
             {listing.title}
           </Text>
-          <Text style={[cardStyles.meta, { color: subtitle }]} numberOfLines={1}>
-            {meta}
-          </Text>
+          {refCode ? (
+            <Text style={[cardStyles.refCode, { color: subtitle }]} numberOfLines={1}>
+              Ref. {refCode}
+            </Text>
+          ) : null}
         </View>
         <View style={[cardStyles.pricePill, { backgroundColor: Colors[theme].tint }]}>
           <Text style={cardStyles.priceText} numberOfLines={1}>
@@ -666,6 +755,23 @@ function ListingCarouselCard({
   const mapZoom = coords?.source === 'exact' ? 11 : coords?.source === 'lookup' ? 7 : 6;
   const photo = listing.photos?.[0] ?? null;
   const price = formatCurrency(listing.askingPrice);
+  
+  // Extract location, tenure, and surgeries from listing
+  const location = listing.locationState?.toUpperCase() === 'UK' 
+    ? listing.locationCity 
+    : `${listing.locationCity}, ${listing.locationState}`;
+  const surgeriesCount = getSurgeriesCountFromTags(listing.tags);
+  const tenure = (() => {
+    const tags = listing.tags ?? [];
+    if (tags.includes('Virtual Freehold')) return 'Virtual Freehold';
+    if (tags.includes('Freehold')) return 'Freehold';
+    if (tags.includes('Leasehold')) return 'Leasehold';
+    const any = tags.find((t) => /freehold|leasehold/i.test(t));
+    return any ?? null;
+  })();
+  
+  const refCode = extractRefCode(listing);
+  
   return (
     <Pressable onPress={onPress} style={[carouselStyles.card, { borderColor }]}>
       {coords ? (
@@ -682,16 +788,26 @@ function ListingCarouselCard({
         <View style={[carouselStyles.image, { backgroundColor: theme === 'dark' ? '#222' : '#ddd' }]} />
       )}
       <View style={carouselStyles.body}>
-        <Text style={carouselStyles.title} numberOfLines={2}>
-          {listing.title}
-        </Text>
-        <Text style={[carouselStyles.meta, { color: subtitle }]} numberOfLines={1}>
-          {listing.locationCity}, {listing.locationState}
-        </Text>
-        <View style={[carouselStyles.pricePill, { backgroundColor: Colors[theme].tint }]}>
-          <Text style={carouselStyles.priceText} numberOfLines={1}>
-            {price}
-          </Text>
+        <View style={carouselStyles.bodyRow}>
+          <View style={carouselStyles.bodyLeft}>
+            <Text style={carouselStyles.title} numberOfLines={2}>
+              {location}
+            </Text>
+            <View style={carouselStyles.bodyMeta}>
+              <View style={[carouselStyles.pricePill, { backgroundColor: Colors[theme].tint }]}>
+                <Text style={carouselStyles.priceText} numberOfLines={1}>
+                  {price}
+                </Text>
+              </View>
+            </View>
+          </View>
+          {refCode ? (
+            <View style={[carouselStyles.refCodeBadge, { borderColor: subtitle }]}>
+              <Text style={[carouselStyles.refCode, { color: subtitle }]} numberOfLines={1}>
+                Ref. {refCode}
+              </Text>
+            </View>
+          ) : null}
         </View>
       </View>
     </Pressable>
@@ -713,7 +829,22 @@ const carouselStyles = StyleSheet.create({
   },
   body: {
     padding: 14,
+  },
+  bodyRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  bodyLeft: {
+    flex: 1,
     gap: 6,
+  },
+  bodyMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
   },
   title: {
     fontSize: 16,
@@ -723,12 +854,22 @@ const carouselStyles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
   },
-  pricePill: {
+  refCodeBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: ui.radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
     alignSelf: 'flex-start',
+    backgroundColor: 'rgba(0,0,0,0.04)',
+  },
+  refCode: {
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  pricePill: {
     borderRadius: ui.radius.pill,
     paddingHorizontal: 10,
     paddingVertical: 6,
-    marginTop: 2,
   },
   priceText: {
     color: '#0b0f1a',

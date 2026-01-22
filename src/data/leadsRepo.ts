@@ -1,4 +1,5 @@
 import { getDbHandle } from '@/src/data/db';
+import { enqueueOutbox } from '@/src/data/outboxRepo';
 import type { Lead, LeadType } from '@/src/domain/types';
 import { isSupabaseConfigured, requireSupabase } from '@/src/supabase/client';
 
@@ -68,8 +69,18 @@ export async function createLead(input: CreateLeadInput): Promise<Lead> {
       }
       // If Supabase insert fails (offline, RLS misconfig, etc.), fall back to local storage.
       console.warn('Supabase lead insert failed; falling back to local DB', error);
+      await enqueueOutbox('lead_insert', { lead, userId });
     } catch (e) {
       console.warn('Supabase lead insert threw; falling back to local DB', e);
+      try {
+        const supabase = requireSupabase();
+        const { data } = await supabase.auth.getSession();
+        const session = data.session;
+        const userId = session?.user?.id ?? null;
+        await enqueueOutbox('lead_insert', { lead, userId });
+      } catch {
+        // ignore enqueue issues; local insert below is still the primary fallback
+      }
     }
   }
 

@@ -1,8 +1,9 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
 import { Text } from '@/components/Themed';
+import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
 import { fetchAllTestimonials, type TestimonialPreview } from '@/src/data/webContent/testimonials';
 import { ScreenHeader } from '@/src/ui/components/ScreenHeader';
@@ -21,6 +22,7 @@ export default function TestimonialDetailScreen() {
 
   const [row, setRow] = useState<TestimonialPreview | null>(null);
   const [status, setStatus] = useState<'idle' | 'loading' | 'error'>('idle');
+  const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
     if (!testimonialId) return;
@@ -49,12 +51,29 @@ export default function TestimonialDetailScreen() {
     load();
   }, [load]);
 
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await load();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [load]);
+
   const title = row?.author ? `${row.author}` : hintAuthor ? `${hintAuthor}` : 'Testimonial';
   const effectiveUrl = row?.url ?? (hintUrl || null);
 
   return (
     <View style={styles.container}>
       <ScrollView
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={Platform.OS === 'ios' ? Colors[theme].tint : undefined}
+            colors={Platform.OS === 'android' ? [Colors[theme].tint] : undefined}
+          />
+        }
         contentContainerStyle={{
           paddingHorizontal: ui.layout.screenPaddingX,
           paddingBottom: ui.spacing.lg,

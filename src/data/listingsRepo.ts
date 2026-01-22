@@ -1,5 +1,6 @@
 import type { Listing, ListingStatus } from '@/src/domain/types';
 import { getDbHandle } from '@/src/data/db';
+import { listListingsFromSupabase, getListingByIdFromSupabase } from '@/src/data/listingsSupabaseRepo';
 
 type ListingsQuery = {
   status?: ListingStatus;
@@ -33,6 +34,13 @@ function rowToListing(row: any): Listing {
     ebitda: row.ebitda == null ? null : Number(row.ebitda),
     yearEstablished: row.yearEstablished == null ? null : Number(row.yearEstablished),
     employeesRange: row.employeesRange ?? null,
+    freeholdValue: row.freeholdValue == null ? null : Number(row.freeholdValue),
+    reconstitutedProfit: row.reconstitutedProfit == null ? null : Number(row.reconstitutedProfit),
+    reconstitutedProfitPercent: row.reconstitutedProfitPercent == null ? null : Number(row.reconstitutedProfitPercent),
+    udasCount: row.udasCount == null ? null : Number(row.udasCount),
+    udasPricePerUda: row.udasPricePerUda == null ? null : Number(row.udasPricePerUda),
+    companyType: row.companyType ?? null,
+    detailedInformationText: row.detailedInformationText ?? null,
     confidential: !!row.confidential,
     financingAvailable: !!row.financingAvailable,
     photos: safeParseJsonArray(row.photosJson),
@@ -51,7 +59,22 @@ function safeParseJsonArray(value: unknown): string[] {
   }
 }
 
+/**
+ * List listings, preferring Supabase but falling back to local SQLite.
+ */
 export async function listListings(query: ListingsQuery = {}): Promise<Listing[]> {
+  // Try Supabase first - use it if available, even if empty (indicates no listings match)
+  try {
+    const supabaseListings = await listListingsFromSupabase(query);
+    // Return Supabase results (even if empty) to ensure we're using Supabase data
+    // Only fallback to SQLite if Supabase throws an error
+    return supabaseListings;
+  } catch (e) {
+    // Fall through to SQLite fallback only on actual errors
+    console.debug('Supabase fetch failed, falling back to SQLite:', e);
+  }
+
+  // Fallback to SQLite only if Supabase throws an error
   const db = await getDbHandle();
 
   const where: string[] = [];
@@ -102,7 +125,22 @@ export async function listListings(query: ListingsQuery = {}): Promise<Listing[]
   return rows.map(rowToListing);
 }
 
+/**
+ * Get a listing by ID, preferring Supabase but falling back to local SQLite.
+ */
 export async function getListingById(id: string): Promise<Listing | null> {
+  // Try Supabase first - return null if not found (don't fallback unless error)
+  try {
+    const supabaseListing = await getListingByIdFromSupabase(id);
+    // Return Supabase result (even if null) to ensure we're using Supabase data
+    // Only fallback to SQLite if Supabase throws an error
+    return supabaseListing;
+  } catch (e) {
+    // Fall through to SQLite fallback only on actual errors
+    console.debug('Supabase fetch failed, falling back to SQLite:', e);
+  }
+
+  // Fallback to SQLite only if Supabase throws an error
   const db = await getDbHandle();
   const rows = await db.getAllAsync('SELECT * FROM listings WHERE id = ? LIMIT 1', [id]);
   return rows.length ? rowToListing(rows[0]) : null;
@@ -126,6 +164,7 @@ export async function upsertListing(input: CreateListingInput): Promise<void> {
       latitude, longitude,
       askingPrice, grossRevenue, cashFlow, ebitda,
       yearEstablished, employeesRange,
+      freeholdValue, reconstitutedProfit, reconstitutedProfitPercent, udasCount, udasPricePerUda, companyType, detailedInformationText,
       confidential, financingAvailable,
       photosJson,
       createdAt, updatedAt
@@ -138,6 +177,7 @@ export async function upsertListing(input: CreateListingInput): Promise<void> {
       ?, ?,
       ?, ?, ?, ?,
       ?, ?,
+      ?, ?, ?, ?, ?, ?, ?,
       ?, ?,
       ?,
       ?, ?
@@ -160,6 +200,13 @@ export async function upsertListing(input: CreateListingInput): Promise<void> {
       ebitda=excluded.ebitda,
       yearEstablished=excluded.yearEstablished,
       employeesRange=excluded.employeesRange,
+      freeholdValue=excluded.freeholdValue,
+      reconstitutedProfit=excluded.reconstitutedProfit,
+      reconstitutedProfitPercent=excluded.reconstitutedProfitPercent,
+      udasCount=excluded.udasCount,
+      udasPricePerUda=excluded.udasPricePerUda,
+      companyType=excluded.companyType,
+      detailedInformationText=excluded.detailedInformationText,
       confidential=excluded.confidential,
       financingAvailable=excluded.financingAvailable,
       photosJson=excluded.photosJson,
@@ -184,6 +231,13 @@ export async function upsertListing(input: CreateListingInput): Promise<void> {
       input.ebitda ?? null,
       input.yearEstablished ?? null,
       input.employeesRange ?? null,
+      input.freeholdValue ?? null,
+      input.reconstitutedProfit ?? null,
+      input.reconstitutedProfitPercent ?? null,
+      input.udasCount ?? null,
+      input.udasPricePerUda ?? null,
+      input.companyType ?? null,
+      input.detailedInformationText ?? null,
       input.confidential ? 1 : 0,
       input.financingAvailable ? 1 : 0,
       JSON.stringify(input.photos ?? []),

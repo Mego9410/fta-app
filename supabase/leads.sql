@@ -30,13 +30,18 @@ create table if not exists public.leads (
   revenue_range text null,
   earnings_range text null,
 
+  notified_at timestamptz null,
   created_at timestamptz not null default now()
 );
+
+-- Lightweight migration(s)
+alter table public.leads add column if not exists notified_at timestamptz null;
 
 create index if not exists idx_leads_created_at on public.leads (created_at desc);
 create index if not exists idx_leads_type on public.leads (type);
 create index if not exists idx_leads_user_id on public.leads (user_id);
 create index if not exists idx_leads_listing_id on public.leads (listing_id);
+create index if not exists idx_leads_notified_at on public.leads (notified_at desc);
 
 alter table public.leads enable row level security;
 

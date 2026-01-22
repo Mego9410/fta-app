@@ -7,6 +7,8 @@ const SOURCE_URL = 'https://www.ft-associates.com/buying-a-dental-practice/denta
 const DEFAULT_HERO_IMAGE =
   'https://www.ft-associates.com/wp-content/themes/ft-associates/images/inner-header.jpg';
 
+export const FTA_PRACTICES_FOR_SALE_URL = SOURCE_URL;
+
 function decodeHtmlEntities(input: string): string {
   return input
     .replace(/&nbsp;/g, ' ')
@@ -75,6 +77,74 @@ function getAttr(attrs: string, name: string): string | null {
   return m?.[1] ?? null;
 }
 
+export type PracticeDetailInfo = {
+  freeholdValue?: number | null;
+  reconstitutedProfit?: number | null;
+  reconstitutedProfitPercent?: number | null;
+  udasCount?: number | null;
+  udasPricePerUda?: number | null;
+  companyType?: string | null;
+  yearEstablishedText?: string | null; // e.g., "over 55 years"
+};
+
+export async function parsePracticeDetailPage(ref: string): Promise<PracticeDetailInfo> {
+  const url = `https://www.ft-associates.com/dental-practices/${ref}/`;
+  try {
+    const res = await fetch(url);
+    const html = await res.text();
+    
+    const info: PracticeDetailInfo = {};
+
+    // Extract "Including Freehold of: **£X**"
+    const freeholdMatch = html.match(/Including Freehold of:\s*<strong>\s*£([^<]+)<\/strong>/i);
+    if (freeholdMatch) {
+      info.freeholdValue = parseMoneyToInt(freeholdMatch[1]);
+    }
+
+    // Extract "Reconstituted profit of £X (Y%)"
+    const profitMatch = html.match(/Reconstituted profit of\s*£([0-9,]+)\s*\(([0-9.]+)%\)/i);
+    if (profitMatch) {
+      info.reconstitutedProfit = parseMoneyToInt(profitMatch[1]);
+      const percent = Number.parseFloat(profitMatch[2]);
+      if (Number.isFinite(percent)) {
+        info.reconstitutedProfitPercent = percent;
+      }
+    }
+
+    // Extract "X UDAs with £Y+ per UDA"
+    const udasMatch = html.match(/([0-9,]+)\s+UDAs?\s+with\s+£([0-9]+)\+?\s+per\s+UDA/i);
+    if (udasMatch) {
+      info.udasCount = parseMoneyToInt(udasMatch[1]);
+      info.udasPricePerUda = parseMoneyToInt(udasMatch[2]);
+    }
+
+    // Extract "Established for over X years" or similar
+    // This will be added to summary, not yearEstablished field (which expects a year, not "over 55 years")
+    const establishedMatch = html.match(/Established\s+(?:for\s+)?(?:over\s+)?([^<\n]+?)(?:\s+years?)?/i);
+    if (establishedMatch) {
+      const text = establishedMatch[1].trim();
+      // Store the text for inclusion in summary
+      const numMatch = text.match(/(\d+)/);
+      if (numMatch) {
+        info.yearEstablishedText = `Established for ${text} years`;
+      }
+    }
+
+    // Extract company type like "Limited Company – asset sale"
+    const companyMatch = html.match(/(Limited Company|Sole Trader|Partnership)(?:\s*[–-]\s*([^<\n]+))?/i);
+    if (companyMatch) {
+      const type = companyMatch[1];
+      const suffix = companyMatch[2]?.trim();
+      info.companyType = suffix ? `${type} – ${suffix}` : type;
+    }
+
+    return info;
+  } catch (error) {
+    console.warn(`Failed to fetch practice detail page for ${ref}:`, error);
+    return {};
+  }
+}
+
 export function parseFtaPracticesForSaleHtml(html: string): Listing[] {
   const listings: Listing[] = [];
   const nowIso = new Date().toISOString();
@@ -112,9 +182,15 @@ export function parseFtaPracticesForSaleHtml(html: string): Listing[] {
     const feeIncomeTag = feeIncome != null ? `Fee income ${formatGbp(feeIncome)}` : null;
     const statusTag = statusText && statusText.toLowerCase() !== 'available' ? statusText : null;
 
-    // Keep chips focused on the key “at-a-glance” facts (like the website):
+    // Handle "Freehold / Leasehold" when both are present
+    let tenureTag = tenure || null;
+    if (tenure && /freehold\s*\/\s*leasehold/i.test(tenure)) {
+      tenureTag = 'Freehold/Leasehold';
+    }
+
+    // Keep chips focused on the key "at-a-glance" facts (like the website):
     // surgeries / tenure / NHS-Private-Mixed / fee income (+ status if not available)
-    const tags = [surgeriesTag, tenure || null, incomeType || null, feeIncomeTag, statusTag].filter(
+    const tags = [surgeriesTag, tenureTag, incomeType || null, feeIncomeTag, statusTag].filter(
       (x): x is string => typeof x === 'string' && x.trim().length > 0,
     );
 
@@ -178,12 +254,58 @@ export async function importFtaPracticesForSale(options?: { replaceExisting?: bo
       await db.execAsync('DELETE FROM listings;');
     }
 
-    for (const l of parsed) {
-      await upsertListing({
+    // Fetch detail pages for additional information (with rate limiting)
+    for (let i = 0; i < parsed.length; i++) {
+      const l = parsed[i];
+      const ref = l.id.replace('ftaweb-', '');
+      
+      // Fetch detail page info
+      const detailInfo = await parsePracticeDetailPage(ref);
+      
+      // Merge detail info into listing
+      // Add detail info to summary if not already present
+      let enhancedSummary = l.summary;
+      if (detailInfo.yearEstablishedText && !enhancedSummary.includes('Established')) {
+        enhancedSummary = `${enhancedSummary}\n\n${detailInfo.yearEstablishedText}`;
+      }
+      if (detailInfo.freeholdValue && !enhancedSummary.includes('Freehold')) {
+        enhancedSummary = `${enhancedSummary}\n\nIncluding Freehold of: ${formatGbp(detailInfo.freeholdValue)}`;
+      }
+      if (detailInfo.reconstitutedProfit && !enhancedSummary.includes('Reconstituted profit')) {
+        const profitText = `Reconstituted profit of ${formatGbp(detailInfo.reconstitutedProfit)}${
+          detailInfo.reconstitutedProfitPercent ? ` (${detailInfo.reconstitutedProfitPercent.toFixed(1)}%)` : ''
+        }`;
+        enhancedSummary = `${enhancedSummary}\n\n${profitText}`;
+      }
+      if (detailInfo.udasCount && !enhancedSummary.includes('UDAs')) {
+        const udasText = `${detailInfo.udasCount.toLocaleString()} UDAs${
+          detailInfo.udasPricePerUda ? ` with ${formatGbp(detailInfo.udasPricePerUda)}+ per UDA` : ''
+        }`;
+        enhancedSummary = `${enhancedSummary}\n\n${udasText}`;
+      }
+      if (detailInfo.companyType && !enhancedSummary.includes('Company')) {
+        enhancedSummary = `${enhancedSummary}\n\n${detailInfo.companyType}`;
+      }
+
+      const enhancedListing: typeof l = {
         ...l,
+        summary: enhancedSummary,
+        freeholdValue: detailInfo.freeholdValue ?? l.freeholdValue,
+        reconstitutedProfit: detailInfo.reconstitutedProfit ?? l.reconstitutedProfit,
+        reconstitutedProfitPercent: detailInfo.reconstitutedProfitPercent ?? l.reconstitutedProfitPercent,
+        udasCount: detailInfo.udasCount ?? l.udasCount,
+        udasPricePerUda: detailInfo.udasPricePerUda ?? l.udasPricePerUda,
+        companyType: detailInfo.companyType ?? l.companyType,
         createdAt: l.createdAt,
         updatedAt: l.updatedAt,
-      });
+      };
+
+      await upsertListing(enhancedListing);
+
+      // Rate limiting: wait 500ms between requests to avoid overwhelming the server
+      if (i < parsed.length - 1) {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
     }
   });
 

@@ -60,6 +60,34 @@ function buildTextBody({ lead }: SellerIntakeEmailInput) {
   return lines.join('\n');
 }
 
+export function buildSellerIntakeEmailPayload(input: SellerIntakeEmailInput) {
+  const subject = buildSubject(input.lead);
+  const text = buildTextBody(input);
+  return {
+    lead: {
+      id: input.lead.id,
+      name: input.lead.name,
+      email: input.lead.email,
+      phone: input.lead.phone,
+      callbackWindow: input.lead.callbackWindow,
+      message: input.lead.message,
+      industry: input.lead.industry,
+      location: input.lead.location,
+      incomeMix: input.lead.incomeMix,
+      practiceType: input.lead.practiceType,
+      surgeriesCount: input.lead.surgeriesCount,
+      tenure: input.lead.tenure,
+      readiness: input.lead.readiness,
+      timeline: input.lead.timeline,
+      revenueRange: input.lead.revenueRange,
+      earningsRange: input.lead.earningsRange,
+      createdAt: input.lead.createdAt,
+    },
+    subject,
+    text,
+  };
+}
+
 function buildMailtoUrl(to: string, subject: string, body: string) {
   return `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }
@@ -72,35 +100,12 @@ function buildMailtoUrl(to: string, subject: string, body: string) {
  * - Otherwise: falls back to opening a pre-filled mail composer via `mailto:`.
  */
 export async function notifySellerIntakeByEmail(input: SellerIntakeEmailInput): Promise<void> {
-  const subject = buildSubject(input.lead);
-  const body = buildTextBody(input);
+  const payload = buildSellerIntakeEmailPayload(input);
 
   if (isSupabaseConfigured) {
     const supabase = requireSupabase();
     const res = await supabase.functions.invoke('seller-intake-email', {
-      body: {
-        lead: {
-          id: input.lead.id,
-          name: input.lead.name,
-          email: input.lead.email,
-          phone: input.lead.phone,
-          callbackWindow: input.lead.callbackWindow,
-          message: input.lead.message,
-          industry: input.lead.industry,
-          location: input.lead.location,
-          incomeMix: input.lead.incomeMix,
-          practiceType: input.lead.practiceType,
-          surgeriesCount: input.lead.surgeriesCount,
-          tenure: input.lead.tenure,
-          readiness: input.lead.readiness,
-          timeline: input.lead.timeline,
-          revenueRange: input.lead.revenueRange,
-          earningsRange: input.lead.earningsRange,
-          createdAt: input.lead.createdAt,
-        },
-        subject,
-        text: body,
-      },
+      body: payload,
     });
 
     if (res.error) {
@@ -116,7 +121,7 @@ export async function notifySellerIntakeByEmail(input: SellerIntakeEmailInput): 
     );
   }
 
-  const url = buildMailtoUrl(to, subject, body);
+  const url = buildMailtoUrl(to, payload.subject, payload.text);
   const canOpen = await Linking.canOpenURL(url);
   if (!canOpen) {
     throw new Error('Could not open mail composer on this device.');

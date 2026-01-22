@@ -1,8 +1,10 @@
+import * as WebBrowser from 'expo-web-browser';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
 import { Text } from '@/components/Themed';
+import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
 import { fetchArticleDetail, type ArticleBlock, type ArticleDetail, type ArticleInline } from '@/src/data/webContent/articles';
 import { ScreenHeader } from '@/src/ui/components/ScreenHeader';
@@ -85,6 +87,7 @@ export default function ArticleScreen() {
 
   const [data, setData] = useState<ArticleDetail | null>(null);
   const [status, setStatus] = useState<'idle' | 'loading' | 'error'>('idle');
+  const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
     if (!articleUrl) return;
@@ -102,6 +105,15 @@ export default function ArticleScreen() {
     load();
   }, [load]);
 
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await load();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [load]);
+
   const title = data?.title ?? 'Article';
   const paragraphs = useMemo(() => splitParagraphs(data?.contentText ?? ''), [data?.contentText]);
   const blocks = data?.blocks ?? null;
@@ -109,6 +121,14 @@ export default function ArticleScreen() {
   return (
     <View style={styles.container}>
       <ScrollView
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={Platform.OS === 'ios' ? Colors[theme].tint : undefined}
+            colors={Platform.OS === 'android' ? [Colors[theme].tint] : undefined}
+          />
+        }
         contentContainerStyle={{
           paddingHorizontal: ui.layout.screenPaddingX,
           paddingBottom: ui.spacing.lg,
@@ -125,7 +145,13 @@ export default function ArticleScreen() {
               articleUrl ? (
                 <Pressable
                   accessibilityRole="button"
-                  onPress={() => router.push({ pathname: '/web', params: { url: articleUrl, title } })}
+                  onPress={async () => {
+                    if (Platform.OS === 'web') {
+                      window.open(articleUrl, '_blank', 'noopener,noreferrer');
+                      return;
+                    }
+                    await WebBrowser.openBrowserAsync(articleUrl);
+                  }}
                   style={[styles.openInline, { backgroundColor: chipBg }]}>
                   <Text style={styles.openInlineText}>Open original</Text>
                 </Pressable>
@@ -143,7 +169,13 @@ export default function ArticleScreen() {
                 {articleUrl ? (
                   <SecondaryButton
                     title="Open original"
-                    onPress={() => router.push({ pathname: '/web', params: { url: articleUrl, title } })}
+                    onPress={async () => {
+                      if (Platform.OS === 'web') {
+                        window.open(articleUrl, '_blank', 'noopener,noreferrer');
+                        return;
+                      }
+                      await WebBrowser.openBrowserAsync(articleUrl);
+                    }}
                   />
                 ) : null}
               </View>
@@ -158,7 +190,13 @@ export default function ArticleScreen() {
                 <View style={{ marginTop: 12 }}>
                   <SecondaryButton
                     title="Open original"
-                    onPress={() => router.push({ pathname: '/web', params: { url: articleUrl, title } })}
+                    onPress={async () => {
+                      if (Platform.OS === 'web') {
+                        window.open(articleUrl, '_blank', 'noopener,noreferrer');
+                        return;
+                      }
+                      await WebBrowser.openBrowserAsync(articleUrl);
+                    }}
                   />
                 </View>
               ) : null}
@@ -179,7 +217,16 @@ export default function ArticleScreen() {
 
           {articleUrl ? (
             <View style={{ paddingTop: 6 }}>
-              <SecondaryButton title="Open original article" onPress={() => router.push({ pathname: '/web', params: { url: articleUrl, title } })} />
+              <SecondaryButton
+                title="Open original article"
+                onPress={async () => {
+                  if (typeof window !== 'undefined' && window.open) {
+                    window.open(articleUrl, '_blank', 'noopener,noreferrer');
+                  } else {
+                    await WebBrowser.openBrowserAsync(articleUrl);
+                  }
+                }}
+              />
             </View>
           ) : null}
         </View>

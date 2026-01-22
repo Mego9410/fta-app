@@ -1,4 +1,5 @@
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.90.1?target=deno';
 
 import { corsHeaders } from '../_shared/cors.ts';
 
@@ -47,6 +48,26 @@ function safe(v: unknown) {
   return s ? s : '';
 }
 
+function nowIso() {
+  return new Date().toISOString();
+}
+
+function minutesAgoIso(mins: number) {
+  return new Date(Date.now() - mins * 60 * 1000).toISOString();
+}
+
+function requireEnv(name: string) {
+  const v = (Deno.env.get(name) ?? '').trim();
+  if (!v) throw new Error(`Missing required env var: ${name}`);
+  return v;
+}
+
+function getAdminSupabase() {
+  const url = requireEnv('SUPABASE_URL');
+  const serviceKey = requireEnv('SUPABASE_SERVICE_ROLE_KEY');
+  return createClient(url, serviceKey, { auth: { persistSession: false } });
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: corsHeaders });
@@ -74,8 +95,54 @@ serve(async (req) => {
   }
 
   const lead: LeadPayload | null = payload?.lead ?? null;
-  if (!lead?.name) {
-    return json(400, { error: 'Missing required field: lead.name' });
+  if (!lead?.name || !lead?.id) {
+    return json(400, { error: 'Missing required fields: lead.name, lead.id' });
+  }
+
+  // Abuse protection + idempotency: only send if a corresponding lead exists and hasn't been notified.
+  try {
+    const supabase = getAdminSupabase();
+    const leadId = String(lead.id);
+
+    const { data: leadRow, error: leadErr } = await supabase
+      .from('leads')
+      .select('id, type, email, phone, created_at, notified_at')
+      .eq('id', leadId)
+      .maybeSingle();
+    if (leadErr) throw leadErr;
+
+    if (!leadRow) {
+      return json(400, { error: 'Unknown lead id. Persist lead first, then send email.' });
+    }
+    if (leadRow.type !== 'sellerIntake') {
+      return json(400, { error: 'Lead type mismatch for seller-intake-email.' });
+    }
+    if (leadRow.notified_at) {
+      return json(200, { ok: true, alreadyNotified: true });
+    }
+
+    // Simple rate-limit: max 3 seller intake leads per 10 minutes per email/phone.
+    const keyEmail = (leadRow.email ?? '').trim();
+    const keyPhone = (leadRow.phone ?? '').trim();
+    if (keyEmail || keyPhone) {
+      let q = supabase
+        .from('leads')
+        .select('id', { count: 'exact', head: true })
+        .eq('type', 'sellerIntake')
+        .gte('created_at', minutesAgoIso(10));
+      if (keyEmail && keyPhone) q = q.or(`email.eq.${keyEmail},phone.eq.${keyPhone}`);
+      else if (keyEmail) q = q.eq('email', keyEmail);
+      else q = q.eq('phone', keyPhone);
+
+      const { count, error: countErr } = await q;
+      if (countErr) throw countErr;
+      if ((count ?? 0) > 3) {
+        return json(429, { error: 'Too many requests. Please wait and try again.' });
+      }
+    }
+  } catch (e) {
+    // If admin DB check isn't configured, fail closed (avoid becoming an open relay).
+    return json(500, { error: 'Email function is not fully configured for abuse protection.', details: String(e) });
   }
 
   const subject = safe(payload?.subject) || `Callback request: Sell a practice${lead.id ? ` (${lead.id})` : ''}`;
@@ -178,6 +245,15 @@ serve(async (req) => {
   }
 
   const resendJson = await resendResp.json().catch(() => ({}));
+
+  // Mark lead as notified (idempotency for retries/outbox).
+  try {
+    const supabase = getAdminSupabase();
+    await supabase.from('leads').update({ notified_at: nowIso() }).eq('id', String(lead.id));
+  } catch {
+    // best-effort
+  }
+
   return json(200, { ok: true, provider: 'resend', result: resendJson });
 });
 

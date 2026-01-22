@@ -1,15 +1,20 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { router } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Switch, View } from 'react-native';
+import { Alert, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Switch, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Text } from '@/components/Themed';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
+import { LINKS } from '@/constants/Links';
 import { clearProfileSettings, getProfileSettings, setProfileSettings } from '@/src/data/profileSettingsRepo';
 import type { ProfileSettings } from '@/src/domain/types';
+import { getAdminAccess } from '@/src/supabase/admin';
+import { isSupabaseConfigured, requireSupabase } from '@/src/supabase/client';
+import { getUserPreferences, upsertUserPreferences } from '@/src/supabase/profileRepo';
 import { SecondaryButton } from '@/src/ui/components/SecondaryButton';
+import { TabPageHeader } from '@/src/ui/components/TabPageHeader';
 import { ui } from '@/src/ui/theme';
 
 export default function ProfileHomeScreen() {
@@ -20,24 +25,108 @@ export default function ProfileHomeScreen() {
   const bottomPad = tabBarHeight + tabBarBottom + ui.spacing.md;
   const [settings, setSettings] = useState<ProfileSettings | null>(null);
   const [statusText, setStatusText] = useState('');
+  const [hasSession, setHasSession] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const load = useCallback(async () => {
+    const s = await getProfileSettings();
+    setSettings(s);
+
+    // Check if user is signed in and sync email preferences from Supabase
+    if (isSupabaseConfigured) {
+      try {
+        const supabase = requireSupabase();
+        const { data } = await supabase.auth.getSession();
+        const session = data.session;
+        setHasSession(!!session);
+
+        // Load email notification preference from Supabase if signed in
+        if (session) {
+          try {
+            const prefs = await getUserPreferences(session.user.id);
+            if (prefs) {
+              setSettings((prev) => ({
+                ...(prev ?? s),
+                emailNotifications: prefs.email_notifications_enabled ?? true,
+              }));
+              // Sync to local storage
+              await setProfileSettings({
+                ...(s ?? { pushNewListings: true, pushSavedActivity: true, marketingEmails: false, emailNotifications: true }),
+                emailNotifications: prefs.email_notifications_enabled ?? true,
+              });
+            }
+          } catch (e) {
+            console.warn('Failed to load email preferences from Supabase', e);
+          }
+
+          // Check admin access
+          try {
+            const adminAccess = await getAdminAccess();
+            setIsAdmin(adminAccess.status === 'admin');
+          } catch (e) {
+            console.warn('Failed to check admin access', e);
+            setIsAdmin(false);
+          }
+        } else {
+          setIsAdmin(false);
+        }
+      } catch {
+        setHasSession(false);
+        setIsAdmin(false);
+      }
+    } else {
+      setIsAdmin(false);
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const s = await getProfileSettings();
-      if (!cancelled) setSettings(s);
+      await load();
     })();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [load]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await load();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [load]);
 
   const update = useCallback(async (patch: Partial<ProfileSettings>) => {
     setStatusText('');
     setSettings((prev) => {
-      const next = { ...(prev ?? { pushNewListings: true, pushSavedActivity: true, marketingEmails: false }), ...patch };
+      const next = {
+        ...(prev ?? { pushNewListings: true, pushSavedActivity: true, marketingEmails: false, emailNotifications: true }),
+        ...patch,
+      };
       // fire-and-forget persistence; UI stays snappy
       void setProfileSettings(next);
+
+      // If emailNotifications changed and user is signed in, sync to Supabase
+      if (patch.emailNotifications !== undefined && isSupabaseConfigured) {
+        (async () => {
+          try {
+            const supabase = requireSupabase();
+            const { data } = await supabase.auth.getSession();
+            const session = data.session;
+            if (session) {
+              await upsertUserPreferences(session.user.id, {
+                email_notifications_enabled: patch.emailNotifications,
+              });
+            }
+          } catch (e) {
+            console.warn('Failed to sync email preferences to Supabase', e);
+          }
+        })();
+      }
+
       return next;
     });
     setStatusText('Saved.');
@@ -54,15 +143,22 @@ export default function ProfileHomeScreen() {
   const border = theme === 'dark' ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.10)';
 
   return (
-    <View
-      style={[
-        styles.container,
-        { paddingTop: ui.layout.screenPaddingY + insets.top, paddingBottom: bottomPad },
-      ]}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Profile</Text>
-        <Text style={styles.subtitle}>Manage your settings and defaults.</Text>
-      </View>
+    <View style={styles.wrapper}>
+      <ScrollView
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={Platform.OS === 'ios' ? Colors[theme].tint : undefined}
+            colors={Platform.OS === 'android' ? [Colors[theme].tint] : undefined}
+          />
+        }
+        contentContainerStyle={[
+          styles.container,
+          { paddingTop: 0, paddingBottom: bottomPad },
+        ]}
+        showsVerticalScrollIndicator={false}>
+      <TabPageHeader title="Profile" subtitle="Manage your settings and defaults." />
 
       <View style={[styles.card, { backgroundColor: cardBg, borderColor: border }]}>
         <Text style={styles.sectionTitle}>Defaults</Text>
@@ -78,19 +174,83 @@ export default function ProfileHomeScreen() {
         <Text style={styles.sectionTitle}>Account</Text>
         <Row
           title="Your details"
-          subtitle="View the details you’ve provided"
+          subtitle="View the details you've provided"
           icon="id-card"
           onPress={() => router.push('/profile/details')}
         />
+        {hasSession && (
+          <Row
+            title="My submissions"
+            subtitle="View your enquiries and seller intakes"
+            icon="list"
+            onPress={() => router.push('/profile/my-submissions')}
+          />
+        )}
+        {hasSession && (
+          <Pressable
+            onPress={async () => {
+              try {
+                if (isSupabaseConfigured) {
+                  const supabase = requireSupabase();
+                  await supabase.auth.signOut();
+                }
+                router.replace('/(tabs)');
+              } catch (e: any) {
+                Alert.alert('Sign out failed', e?.message ?? String(e));
+              }
+            }}
+            style={[styles.row, { borderColor: theme === 'dark' ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.08)' }]}>
+            <View style={styles.rowLeft}>
+              <View style={[styles.iconWrap, { backgroundColor: theme === 'dark' ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.06)' }]}>
+                <FontAwesome name="sign-out" size={16} color={theme === 'dark' ? 'rgba(255,255,255,0.85)' : 'rgba(0,0,0,0.55)'} />
+              </View>
+              <View style={styles.rowText}>
+                <Text style={styles.rowTitle}>Sign out</Text>
+                <Text style={styles.rowSubtitle}>Sign out of your account</Text>
+              </View>
+            </View>
+            <FontAwesome name="chevron-right" size={16} color={theme === 'dark' ? 'rgba(255,255,255,0.85)' : 'rgba(0,0,0,0.55)'} />
+          </Pressable>
+        )}
       </View>
 
+      {isAdmin && (
+        <View style={[styles.card, { backgroundColor: cardBg, borderColor: border }]}>
+          <Text style={styles.sectionTitle}>Admin</Text>
+          <Row
+            title="Admin controls"
+            subtitle="Sync listings and view leads"
+            icon="lock"
+            onPress={() => router.push('/profile/admin')}
+          />
+        </View>
+      )}
+
       <View style={[styles.card, { backgroundColor: cardBg, borderColor: border }]}>
-        <Text style={styles.sectionTitle}>Admin</Text>
+        <Text style={styles.sectionTitle}>Help & legal</Text>
         <Row
-          title="Admin controls"
-          subtitle="Create, edit, and archive listings"
-          icon="lock"
-          onPress={() => router.push('/profile/admin')}
+          title="Contact support"
+          subtitle="Get help or ask a question"
+          icon="envelope"
+          onPress={() => router.push({ pathname: '/web', params: { url: LINKS.supportSite, title: 'Support' } } as any)}
+        />
+        <Row
+          title="Privacy policy"
+          subtitle="How we use your data"
+          icon="shield"
+          onPress={() => router.push({ pathname: '/web', params: { url: LINKS.privacy, title: 'Privacy policy' } } as any)}
+        />
+        <Row
+          title="Terms"
+          subtitle="Terms and conditions"
+          icon="file-text"
+          onPress={() => router.push({ pathname: '/web', params: { url: LINKS.terms, title: 'Terms' } } as any)}
+        />
+        <Row
+          title="Delete account"
+          subtitle="Request account deletion"
+          icon="trash"
+          onPress={() => router.push('/profile/delete-account')}
         />
       </View>
 
@@ -100,13 +260,32 @@ export default function ProfileHomeScreen() {
           title="New listings"
           subtitle="Get notified when new listings appear"
           value={!!settings?.pushNewListings}
-          onValueChange={(v) => update({ pushNewListings: v })}
+          onValueChange={(v) => {
+            update({ pushNewListings: v });
+            // If disabling new listings, also disable search filters
+            if (!v) {
+              update({ useSearchFilters: false });
+            }
+          }}
+        />
+        <ToggleRow
+          title="Use search filters"
+          subtitle="Only notify about listings matching your search criteria"
+          value={!!settings?.useSearchFilters}
+          disabled={!settings?.pushNewListings}
+          onValueChange={(v) => update({ useSearchFilters: v })}
         />
         <ToggleRow
           title="Saved activity"
           subtitle="Updates on saved listings (coming soon)"
           value={!!settings?.pushSavedActivity}
           onValueChange={(v) => update({ pushSavedActivity: v })}
+        />
+        <ToggleRow
+          title="Email updates"
+          subtitle="Receive email notifications about your submissions"
+          value={settings?.emailNotifications !== undefined ? !!settings.emailNotifications : true}
+          onValueChange={(v) => update({ emailNotifications: v })}
         />
       </View>
 
@@ -124,9 +303,10 @@ export default function ProfileHomeScreen() {
         <SecondaryButton title="Reset profile settings" onPress={onClearSettings} />
         {statusText ? <Text style={styles.status}>{statusText}</Text> : null}
         <Text style={styles.helper}>
-          Note: account sign-in + real notifications will come when we add Supabase auth & push setup.
+          Note: push notifications require additional setup (APNs/FCM). Email enquiries work now.
         </Text>
       </View>
+      </ScrollView>
     </View>
   );
 }
@@ -165,37 +345,37 @@ function ToggleRow({
   title,
   subtitle,
   value,
+  disabled,
   onValueChange,
 }: {
   title: string;
   subtitle?: string;
   value: boolean;
+  disabled?: boolean;
   onValueChange: (v: boolean) => void;
 }) {
   const theme = useColorScheme() ?? 'light';
   const trackColor = { false: theme === 'dark' ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.15)', true: Colors[theme].tint };
   const thumbColor = '#fff';
+  const opacity = disabled ? 0.5 : 1;
   return (
-    <View style={styles.toggleRow}>
+    <View style={[styles.toggleRow, { opacity }]}>
       <View style={styles.rowText}>
         <Text style={styles.rowTitle}>{title}</Text>
         {subtitle ? <Text style={styles.rowSubtitle}>{subtitle}</Text> : null}
       </View>
-      <Switch value={value} onValueChange={onValueChange} trackColor={trackColor} thumbColor={thumbColor} />
+      <Switch value={value} onValueChange={onValueChange} trackColor={trackColor} thumbColor={thumbColor} disabled={disabled} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  wrapper: {
     flex: 1,
-    paddingTop: ui.layout.screenPaddingY,
-    paddingHorizontal: ui.layout.screenPaddingX,
+  },
+  container: {
     gap: 14,
   },
-  header: { gap: 4 },
-  title: { fontSize: 26, fontWeight: '900' },
-  subtitle: { fontSize: 14, opacity: 0.75, fontWeight: '600' },
   card: {
     borderRadius: 16,
     borderWidth: StyleSheet.hairlineWidth,

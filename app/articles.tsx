@@ -1,7 +1,7 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { router } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
+import { FlatList, Platform, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 
 import { Text } from '@/components/Themed';
 import type { ArticlePreview } from '@/src/data/webContent/articles';
@@ -93,7 +93,14 @@ export default function ArticlesScreen() {
       <FlatList
         data={filtered}
         keyExtractor={(a) => a.url}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={Platform.OS === 'ios' ? Colors[theme].tint : undefined}
+            colors={Platform.OS === 'android' ? [Colors[theme].tint] : undefined}
+          />
+        }
         contentContainerStyle={{
           paddingBottom: bottomPad,
           paddingHorizontal: ui.layout.screenPaddingX,

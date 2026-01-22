@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   FlatList,
+  Platform,
   Pressable,
   RefreshControl,
   StyleSheet,
@@ -12,10 +13,14 @@ import {
 } from 'react-native';
 
 import { Text } from '@/components/Themed';
+import Colors from '@/constants/Colors';
+import { useColorScheme } from '@/components/useColorScheme';
 import type { Listing } from '@/src/domain/types';
 import { listListings, setListingStatus } from '@/src/data/listingsRepo';
 import { setAdminForceLoginNextOpenEnabled, setAdminForceOnboardingNextOpenEnabled } from '@/src/data/onboardingLocalRepo';
-import { importFtaPracticesForSale } from '@/src/data/importers/ftaPracticesForSale';
+import { getListingsSyncMeta, maybeSyncListingsFromWebsite } from '@/src/data/listingsSync';
+import { checkForNewListings } from '@/src/data/newListingsCheck';
+import { requestNotificationPermissions } from '@/src/notifications/notifications';
 import { hydrateAdminSession, isAdminAuthed, setAdminAuthed } from '@/src/ui/admin/adminSession';
 import { getAdminAccess } from '@/src/supabase/admin';
 import { isSupabaseConfigured, requireSupabase } from '@/src/supabase/client';
@@ -24,6 +29,7 @@ import { ScreenHeader } from '@/src/ui/components/ScreenHeader';
 import { ui } from '@/src/ui/theme';
 
 export default function AdminHomeScreen() {
+  const theme = useColorScheme() ?? 'light';
   const [authed, setAuthedState] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [passcode, setPasscode] = useState('');
@@ -31,12 +37,13 @@ export default function AdminHomeScreen() {
   const [mode, setMode] = useState<'local' | 'supabase'>('local');
   const [notAdmin, setNotAdmin] = useState(false);
 
-  const [showArchived, setShowArchived] = useState(false);
   const [keyword, setKeyword] = useState('');
   const [listings, setListings] = useState<Listing[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [importing, setImporting] = useState(false);
-  const [replaceOnImport, setReplaceOnImport] = useState(true);
+  const [testingNotifications, setTestingNotifications] = useState(false);
+  const [previewingNotification, setPreviewingNotification] = useState(false);
+  const [syncLine, setSyncLine] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -76,15 +83,23 @@ export default function AdminHomeScreen() {
     };
   }, []);
 
-  const status: Listing['status'] = showArchived ? 'archived' : 'active';
   const query = useMemo(
-    () => ({ status, keyword: keyword.trim() ? keyword.trim() : undefined }),
-    [status, keyword],
+    () => ({ status: 'active' as const, keyword: keyword.trim() ? keyword.trim() : undefined }),
+    [keyword],
   );
 
   const load = useCallback(async () => {
     const rows = await listListings(query);
     setListings(rows);
+
+    const meta = await getListingsSyncMeta();
+    if (meta.lastAt) {
+      const d = new Date(meta.lastAt);
+      const dateText = Number.isNaN(d.getTime()) ? meta.lastAt : d.toLocaleString();
+      setSyncLine(`Last sync: ${dateText}`);
+    } else {
+      setSyncLine('');
+    }
   }, [query]);
 
   useEffect(() => {
@@ -199,7 +214,7 @@ export default function AdminHomeScreen() {
         mode="tabs"
         fallbackHref="/profile"
         title="Admin"
-        subtitle="Create, edit, and archive listings."
+        subtitle={syncLine || 'Sync listings and view leads.'}
         style={{ paddingHorizontal: 0, paddingBottom: 6 }}
         right={
           <Pressable
@@ -258,6 +273,130 @@ export default function AdminHomeScreen() {
           </View>
         </View>
 
+        <View style={styles.onboardingAdmin}>
+          <Text style={styles.sectionTitle}>Notifications (Admin)</Text>
+          <View style={styles.onboardingActions}>
+            <Pressable
+              disabled={testingNotifications || previewingNotification}
+              style={[styles.btn, styles.btnPrimary, (testingNotifications || previewingNotification) && styles.btnDisabled]}
+              onPress={async () => {
+                setTestingNotifications(true);
+                try {
+                  // Request permissions if needed
+                  const hasPermission = await requestNotificationPermissions();
+                  if (!hasPermission) {
+                    Alert.alert(
+                      'Permissions needed',
+                      'Please enable notification permissions in your device settings to test notifications.',
+                    );
+                    return;
+                  }
+
+                  // Force check for new listings and send notifications
+                  await checkForNewListings();
+                  Alert.alert('Notifications checked', 'Check for new listings completed. If there are new matching listings, notifications were sent.');
+                } catch (e: any) {
+                  Alert.alert('Error', `Failed to check notifications: ${e?.message || String(e)}`);
+                } finally {
+                  setTestingNotifications(false);
+                }
+              }}>
+              <Text style={styles.btnPrimaryText}>{testingNotifications ? 'Checking…' : 'Force Check Notifications'}</Text>
+            </Pressable>
+
+            <Pressable
+              disabled={testingNotifications || previewingNotification}
+              style={[styles.btn, styles.btnGhost, (testingNotifications || previewingNotification) && styles.btnDisabled]}
+              onPress={async () => {
+                setPreviewingNotification(true);
+                try {
+                  // Request permissions if needed
+                  const hasPermission = await requestNotificationPermissions();
+                  if (!hasPermission) {
+                    Alert.alert(
+                      'Permissions needed',
+                      'Please enable notification permissions in your device settings to preview notifications.',
+                    );
+                    return;
+                  }
+
+                  // Get the most recent listing based on reference number
+                  const recentListings = await listListings({ status: 'active' });
+                  if (recentListings.length === 0) {
+                    Alert.alert('No listings', 'There are no active listings to preview. Sync listings first.');
+                    return;
+                  }
+
+                  // Extract reference code from listing
+                  const extractRefCode = (listing: Listing): string | null => {
+                    // Extract from summary (e.g., "Ref. 14-96-3452")
+                    if (listing.summary) {
+                      const m = listing.summary.match(/Ref\.\s*([A-Za-z0-9-]+)/i);
+                      const raw = m?.[1]?.trim() ?? null;
+                      if (!raw) return null;
+                      // Some sources append tenure immediately after the ref (e.g., `Ref. 14-96-3451Leasehold`).
+                      const cleaned = raw.replace(/\s*(virtual freehold|leasehold|freehold)\s*$/i, '').trim();
+                      return cleaned || null;
+                    }
+                    // Fallback: extract from ID if it's in the format ftaweb-REF
+                    if (listing.id.startsWith('ftaweb-')) {
+                      return listing.id.replace('ftaweb-', '');
+                    }
+                    return null;
+                  };
+
+                  // Get last 4 digits of reference number
+                  const getLast4Digits = (refCode: string | null): number => {
+                    if (!refCode) return -1; // Put listings without ref codes at the end
+                    // Extract all digits from the ref code
+                    const digits = refCode.replace(/\D/g, '');
+                    if (digits.length === 0) return -1;
+                    // Get last 4 digits, pad with zeros if needed
+                    const last4 = digits.slice(-4).padStart(4, '0');
+                    return parseInt(last4, 10);
+                  };
+
+                  // Sort by last 4 digits of reference number (highest first)
+                  const sorted = [...recentListings].sort((a, b) => {
+                    const aRefCode = extractRefCode(a);
+                    const bRefCode = extractRefCode(b);
+                    const aLast4 = getLast4Digits(aRefCode);
+                    const bLast4 = getLast4Digits(bRefCode);
+                    return bLast4 - aLast4; // Descending order
+                  });
+
+                  // Get the most recent listing (highest last 4 digits)
+                  const mostRecent = sorted[0];
+                  
+                  // Format location and price like the actual notifications
+                  const location = mostRecent.locationState?.toUpperCase() === 'UK' 
+                    ? mostRecent.locationCity 
+                    : `${mostRecent.locationCity}, ${mostRecent.locationState}`;
+                  const price = new Intl.NumberFormat('en-GB', {
+                    style: 'currency',
+                    currency: 'GBP',
+                    maximumFractionDigits: 0,
+                  }).format(mostRecent.askingPrice);
+                  const body = `New Practice! - ${location}, ${price}`;
+
+                  // Send a preview notification with actual listing data
+                  const { scheduleNotification } = await import('@/src/notifications/notifications');
+                  await scheduleNotification('Frank Taylor & Associates', body, {
+                    listingId: mostRecent.id,
+                    type: 'new_listing',
+                  });
+                  Alert.alert('Preview sent', 'A test notification has been sent with the most recent practice. Check your notification tray and tap it to view the listing.');
+                } catch (e: any) {
+                  Alert.alert('Error', `Failed to send preview notification: ${e?.message || String(e)}`);
+                } finally {
+                  setPreviewingNotification(false);
+                }
+              }}>
+              <Text style={styles.btnGhostText}>{previewingNotification ? 'Sending…' : 'Preview Notification'}</Text>
+            </Pressable>
+          </View>
+        </View>
+
         <TextInput
           value={keyword}
           onChangeText={setKeyword}
@@ -268,22 +407,7 @@ export default function AdminHomeScreen() {
           clearButtonMode="while-editing"
         />
 
-        <View style={styles.toggleRow}>
-          <Text style={styles.toggleLabel}>Show archived</Text>
-          <Switch value={showArchived} onValueChange={setShowArchived} />
-        </View>
-
-        <View style={styles.toggleRow}>
-          <Text style={styles.toggleLabel}>Replace listings on import</Text>
-          <Switch value={replaceOnImport} onValueChange={setReplaceOnImport} />
-        </View>
-
         <View style={styles.actionsRow}>
-          <Link href="/profile/admin/new" asChild>
-            <Pressable style={[styles.btn, styles.btnPrimary]}>
-              <Text style={styles.btnPrimaryText}>Create Listing</Text>
-            </Pressable>
-          </Link>
           <Link href="/profile/admin/leads" asChild>
             <Pressable style={[styles.btn, styles.btnPrimary]}>
               <Text style={styles.btnPrimaryText}>View Leads</Text>
@@ -295,16 +419,22 @@ export default function AdminHomeScreen() {
             onPress={async () => {
               setImporting(true);
               try {
-                const result = await importFtaPracticesForSale({ replaceExisting: replaceOnImport });
-                Alert.alert('Import complete', `Imported ${result.imported} listings.`);
+                const result = await maybeSyncListingsFromWebsite({ force: true, throttleMs: 0 });
+                if (result.status === 'ok') {
+                  Alert.alert('Sync complete', `Imported ${result.imported} listings.`);
+                } else if (result.status === 'skipped') {
+                  Alert.alert('Up to date', 'Listings were recently synced.');
+                } else {
+                  Alert.alert('Sync failed', 'Could not sync listings from the website. Cached listings are unchanged.');
+                }
                 await load();
               } catch (e) {
-                Alert.alert('Import failed', 'Could not import listings from the website. Try again.');
+                Alert.alert('Sync failed', 'Could not sync listings from the website. Try again.');
               } finally {
                 setImporting(false);
               }
             }}>
-            <Text style={styles.btnPrimaryText}>{importing ? 'Importing…' : 'Import from Website'}</Text>
+            <Text style={styles.btnPrimaryText}>{importing ? 'Syncing…' : 'Sync from Website'}</Text>
           </Pressable>
         </View>
       </View>
@@ -312,7 +442,14 @@ export default function AdminHomeScreen() {
       <FlatList
         data={listings}
         keyExtractor={(item) => item.id}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={Platform.OS === 'ios' ? Colors[theme].tint : undefined}
+            colors={Platform.OS === 'android' ? [Colors[theme].tint] : undefined}
+          />
+        }
         contentContainerStyle={styles.listContent}
         renderItem={({ item }) => (
           <View style={styles.adminCardWrap}>
@@ -321,52 +458,19 @@ export default function AdminHomeScreen() {
               isSaved={false}
               onPress={() =>
                 router.push({
-                  pathname: '/profile/admin/edit/[id]',
+                  pathname: '/listings/[id]',
                   params: { id: item.id },
                 })
               }
-              onToggleSaved={() =>
-                router.push({
-                  pathname: '/profile/admin/edit/[id]',
-                  params: { id: item.id },
-                })
-              }
+              onToggleSaved={() => {}}
             />
-
-            <View style={styles.adminRow}>
-              <Pressable
-                style={[styles.btn, styles.btnGhost, styles.half]}
-                onPress={() =>
-                  router.push({
-                    pathname: '/profile/admin/edit/[id]',
-                    params: { id: item.id },
-                  })
-                }>
-                <Text style={styles.btnGhostText}>Edit</Text>
-              </Pressable>
-              <Pressable
-                style={[styles.btn, styles.btnGhost, styles.half]}
-                onPress={async () => {
-                  if (!isAdminAuthed()) {
-                    await hydrateAdminSession();
-                    if (!isAdminAuthed()) {
-                      router.replace('/profile/admin');
-                      return;
-                    }
-                  }
-                  await setListingStatus(item.id, item.status === 'active' ? 'archived' : 'active');
-                  await load();
-                }}>
-                <Text style={styles.btnGhostText}>{item.status === 'active' ? 'Archive' : 'Unarchive'}</Text>
-              </Pressable>
-            </View>
           </View>
         )}
         ListEmptyComponent={
           <View style={styles.empty}>
             <Text style={styles.emptyTitle}>No listings</Text>
             <Text style={styles.emptyBody}>
-              {showArchived ? 'No archived listings.' : 'Create your first listing to get started.'}
+              Listings are synced from the website. Tap “Sync from Website” to refresh.
             </Text>
           </View>
         }

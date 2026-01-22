@@ -1,16 +1,20 @@
 import { router } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { FlatList, RefreshControl, StyleSheet, View } from 'react-native';
+import { FlatList, Platform, RefreshControl, StyleSheet, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Text } from '@/components/Themed';
+import Colors from '@/constants/Colors';
+import { useColorScheme } from '@/components/useColorScheme';
 import type { Listing } from '@/src/domain/types';
 import { listFavoriteListings, toggleFavorite } from '@/src/data/favoritesRepo';
 import { ListingCard } from '@/src/ui/components/ListingCard';
+import { TabPageHeader } from '@/src/ui/components/TabPageHeader';
 import { ui } from '@/src/ui/theme';
 
 export default function SavedScreen() {
+  const theme = useColorScheme() ?? 'light';
   const insets = useSafeAreaInsets();
   const tabBarHeight = 66;
   const tabBarBottom = Math.max(insets.bottom, ui.spacing.md);
@@ -48,10 +52,7 @@ export default function SavedScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
-        <Text style={styles.title}>Saved</Text>
-        <Text style={styles.subtitle}>Your favorites, like saved homes.</Text>
-      </View>
+      <TabPageHeader title="Saved" subtitle="Your favorites, like saved homes." />
 
       <FlatList
         data={listings}
@@ -63,7 +64,14 @@ export default function SavedScreen() {
             paddingBottom: bottomPad,
           },
         ]}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={Platform.OS === 'ios' ? Colors[theme].tint : undefined}
+            colors={Platform.OS === 'android' ? [Colors[theme].tint] : undefined}
+          />
+        }
         renderItem={({ item }) => (
           <ListingCard
             listing={item}
@@ -94,21 +102,6 @@ export default function SavedScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-  },
-  header: {
-    paddingHorizontal: ui.layout.screenPaddingX,
-    paddingTop: 16,
-    paddingBottom: 6,
-    gap: 4,
-  },
-  title: {
-    fontSize: 26,
-    fontWeight: '900',
-  },
-  subtitle: {
-    fontSize: 14,
-    opacity: 0.75,
-    fontWeight: '600',
   },
   listContent: {
     paddingTop: 10,

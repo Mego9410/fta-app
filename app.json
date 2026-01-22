@@ -16,7 +16,10 @@
     "ios": {
       "bundleIdentifier": "com.fta.ftaapp",
       "buildNumber": "1",
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "UIBackgroundModes": ["fetch"]
+      }
     },
     "android": {
       "adaptiveIcon": {

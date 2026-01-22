@@ -7,6 +7,8 @@ const DEFAULTS: ProfileSettings = {
   pushNewListings: true,
   pushSavedActivity: true,
   marketingEmails: false,
+  emailNotifications: true,
+  useSearchFilters: false,
 };
 
 export async function getProfileSettings(): Promise<ProfileSettings> {
@@ -47,6 +49,8 @@ function sanitizeProfileSettings(input: any): ProfileSettings | null {
     pushNewListings: !!input.pushNewListings,
     pushSavedActivity: !!input.pushSavedActivity,
     marketingEmails: !!input.marketingEmails,
+    emailNotifications: input.emailNotifications !== undefined ? !!input.emailNotifications : true,
+    useSearchFilters: !!input.useSearchFilters,
   };
 }
 

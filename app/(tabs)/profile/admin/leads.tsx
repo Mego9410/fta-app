@@ -1,8 +1,10 @@
 import { router } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
+import { Alert, FlatList, Platform, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 
 import { Text } from '@/components/Themed';
+import Colors from '@/constants/Colors';
+import { useColorScheme } from '@/components/useColorScheme';
 import { getAdminAccess } from '@/src/supabase/admin';
 import { isSupabaseConfigured, requireSupabase } from '@/src/supabase/client';
 import { ScreenHeader } from '@/src/ui/components/ScreenHeader';
@@ -40,6 +42,7 @@ function fmt(iso: string) {
 }
 
 export default function AdminLeadsScreen() {
+  const theme = useColorScheme() ?? 'light';
   const [ready, setReady] = useState(false);
   const [typeFilter, setTypeFilter] = useState<LeadTypeFilter>('all');
   const [rows, setRows] = useState<LeadRow[]>([]);
@@ -149,7 +152,14 @@ export default function AdminLeadsScreen() {
       <FlatList
         data={rows}
         keyExtractor={(item) => item.id}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={Platform.OS === 'ios' ? Colors[theme].tint : undefined}
+            colors={Platform.OS === 'android' ? [Colors[theme].tint] : undefined}
+          />
+        }
         contentContainerStyle={styles.listContent}
         renderItem={({ item }) => (
           <Pressable

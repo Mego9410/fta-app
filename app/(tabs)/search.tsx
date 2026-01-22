@@ -1,12 +1,14 @@
 import Slider from '@react-native-community/slider';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { FlatList, RefreshControl, StyleSheet, TextInput, View } from 'react-native';
+import { ActivityIndicator, FlatList, Platform, RefreshControl, StyleSheet, TextInput, View } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Text } from '@/components/Themed';
 import type { Listing, SearchPreferences } from '@/src/domain/types';
 import { listListings } from '@/src/data/listingsRepo';
+import { getListingsSyncMeta, maybeSyncListingsFromWebsite } from '@/src/data/listingsSync';
 import { isFavorite, toggleFavorite } from '@/src/data/favoritesRepo';
 import { getSearchPreferences, setSearchPreferences } from '@/src/data/preferencesRepo';
 import { ListingCard } from '@/src/ui/components/ListingCard';
@@ -14,6 +16,7 @@ import { SearchBar } from '@/src/ui/components/SearchBar';
 import { Pill } from '@/src/ui/components/Pill';
 import { PrimaryButton } from '@/src/ui/components/PrimaryButton';
 import { SecondaryButton } from '@/src/ui/components/SecondaryButton';
+import { TabPageHeader } from '@/src/ui/components/TabPageHeader';
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
 import { formatCurrency } from '@/src/ui/format';
@@ -50,6 +53,7 @@ export default function SearchScreen() {
   const [listings, setListings] = useState<Listing[]>([]);
   const [savedMap, setSavedMap] = useState<Record<string, boolean>>({});
   const [refreshing, setRefreshing] = useState(false);
+  const [syncLine, setSyncLine] = useState('');
 
   const [defaults, setDefaults] = useState<SearchPreferences | null>(null);
   const [defaultsStatus, setDefaultsStatus] = useState('');
@@ -80,18 +84,22 @@ export default function SearchScreen() {
     setRadiusMiles(prefs.radiusMiles ?? 25);
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const prefs = await getSearchPreferences();
-      if (cancelled) return;
-      setDefaults(prefs);
-      if (prefs) applyDefaults(prefs);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [applyDefaults]);
+  // Load defaults on mount and whenever the tab gains focus
+  // This ensures defaults update when navigating back from profile settings
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      (async () => {
+        const prefs = await getSearchPreferences();
+        if (cancelled) return;
+        setDefaults(prefs);
+        if (prefs) applyDefaults(prefs);
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }, [applyDefaults]),
+  );
 
   useEffect(() => {
     const kw = typeof params.keyword === 'string' ? params.keyword : '';
@@ -103,11 +111,21 @@ export default function SearchScreen() {
   }, [params.confidentialOnly, params.featuredOnly, params.financingOnly, params.keyword]);
 
   const load = useCallback(async () => {
+    await maybeSyncListingsFromWebsite();
     const rows = await listListings({ status: 'active' });
     setAllListings(rows);
 
     const pairs = await Promise.all(rows.map(async (l) => [l.id, await isFavorite(l.id)] as const));
     setSavedMap(Object.fromEntries(pairs));
+
+    const meta = await getListingsSyncMeta();
+    if (meta.lastAt) {
+      const d = new Date(meta.lastAt);
+      const dateText = Number.isNaN(d.getTime()) ? meta.lastAt : d.toLocaleString();
+      setSyncLine(`Listings updated: ${dateText}`);
+    } else {
+      setSyncLine('');
+    }
 
     // initialize slider ranges from data
     const surgeriesCounts = rows
@@ -128,17 +146,22 @@ export default function SearchScreen() {
   }, [load]);
 
   const filtered = useMemo(() => {
+    const hasKeyword = keyword.trim().length > 0;
+    
     return allListings.filter((l) => {
       if (presetFeaturedOnly && !l.featured) return false;
       if (presetConfidentialOnly && !l.confidential) return false;
       if (presetFinancingOnly && !l.financingAvailable) return false;
 
-      if (keyword.trim()) {
+      if (hasKeyword) {
+        // When keyword is present, ignore all other filters except keyword and presets
         const kw = keyword.trim().toLowerCase();
         const hay = `${l.title} ${l.industry} ${l.summary} ${l.locationCity} ${l.locationState}`.toLowerCase();
         if (!hay.includes(kw)) return false;
+        return true;
       }
 
+      // Apply all filters when no keyword is present
       const surgeries = getSurgeriesCountFromTags(l.tags);
       if (surgeries != null && surgeries > surgeriesValue) return false;
 
@@ -196,17 +219,67 @@ export default function SearchScreen() {
     radiusMiles,
   ]);
 
+  const sorted = useMemo(() => {
+    return [...filtered].sort((a, b) => {
+      // Check if listings are under offer
+      const aUnderOffer =
+        (a.tags ?? []).some((t) => t.trim().toLowerCase() === 'under offer') ||
+        /Status:\s*Under Offer/i.test(a.summary ?? '');
+      const bUnderOffer =
+        (b.tags ?? []).some((t) => t.trim().toLowerCase() === 'under offer') ||
+        /Status:\s*Under Offer/i.test(b.summary ?? '');
+
+      // Sort: non-under-offer first (0), then under-offer (1)
+      if (aUnderOffer !== bUnderOffer) {
+        return aUnderOffer ? 1 : -1;
+      }
+
+      // Within each group, sort by last 4 digits of reference number
+      const extractRefCode = (listing: Listing): string | null => {
+        if (listing.summary) {
+          const m = listing.summary.match(/Ref\.\s*([A-Za-z0-9-]+)/i);
+          const raw = m?.[1]?.trim() ?? null;
+          if (!raw) return null;
+          const cleaned = raw.replace(/\s*(virtual freehold|leasehold|freehold)\s*$/i, '').trim();
+          return cleaned || null;
+        }
+        if (listing.id.startsWith('ftaweb-')) {
+          return listing.id.replace('ftaweb-', '');
+        }
+        return null;
+      };
+
+      const getLast4Digits = (refCode: string | null): number => {
+        if (!refCode) return 9999; // Put listings without ref codes at the end
+        // Extract all digits from the ref code
+        const digits = refCode.replace(/\D/g, '');
+        if (digits.length === 0) return 9999;
+        // Get last 4 digits, pad with zeros if needed
+        const last4 = digits.slice(-4).padStart(4, '0');
+        return parseInt(last4, 10);
+      };
+
+      const aRefCode = extractRefCode(a);
+      const bRefCode = extractRefCode(b);
+      const aLast4 = getLast4Digits(aRefCode);
+      const bLast4 = getLast4Digits(bRefCode);
+
+      return bLast4 - aLast4;
+    });
+  }, [filtered]);
+
   const availableCount = useMemo(() => {
     return filtered.filter((l) => isAvailablePractice(l)).length;
   }, [filtered]);
 
   useEffect(() => {
-    setListings(filtered);
-  }, [filtered]);
+    setListings(sorted);
+  }, [sorted]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
+      await maybeSyncListingsFromWebsite({ force: true });
       await load();
     } finally {
       setRefreshing(false);
@@ -248,6 +321,11 @@ export default function SearchScreen() {
 
   return (
     <View style={styles.container}>
+      {refreshing && (
+        <View style={[styles.refreshIndicator, { top: insets.top + 10 }]}>
+          <ActivityIndicator size="small" color={Colors[theme].tint} />
+        </View>
+      )}
       <FlatList
         data={listings}
         keyExtractor={(item) => item.id}
@@ -258,14 +336,17 @@ export default function SearchScreen() {
             paddingBottom: bottomPad,
           },
         ]}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={Platform.OS === 'ios' ? Colors[theme].tint : undefined}
+            colors={Platform.OS === 'android' ? [Colors[theme].tint] : undefined}
+          />
+        }
         ListHeaderComponent={
-          <View style={styles.listHeader}>
-            <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
-              <Text style={styles.title}>Search</Text>
-              <Text style={styles.subtitle}>Filter practices and listings.</Text>
-            </View>
-
+          <>
+            <TabPageHeader title="Search" subtitle={syncLine || 'Filter practices and listings.'} />
             <View style={styles.filters}>
               <SearchBar value={keyword} onChangeText={setKeyword} placeholder="Search…" />
 
@@ -285,102 +366,124 @@ export default function SearchScreen() {
               </View>
               {defaultsStatus ? <Text style={styles.defaultsStatus}>{defaultsStatus}</Text> : null}
 
-              <Group title="Number of surgeries (max)">
-                <Text style={styles.valueText}>{surgeriesValue}+</Text>
-                <Slider
-                  minimumValue={1}
-                  maximumValue={Math.max(1, surgeriesMax)}
-                  step={1}
-                  value={surgeriesValue}
-                  onValueChange={setSurgeriesValue}
-                  minimumTrackTintColor={Colors[theme].tint}
-                  maximumTrackTintColor={theme === 'dark' ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.20)'}
-                  thumbTintColor={Colors[theme].tint}
-                  style={styles.slider}
-                />
-              </Group>
+              {(() => {
+                const filtersDisabled = keyword.trim().length > 0;
+                return (
+                  <>
+                    <Group title="Number of surgeries (max)" disabled={filtersDisabled}>
+                      <Text style={[styles.valueText, filtersDisabled && styles.disabledText]}>
+                        {surgeriesValue}+
+                      </Text>
+                      <Slider
+                        minimumValue={1}
+                        maximumValue={Math.max(1, surgeriesMax)}
+                        step={1}
+                        value={surgeriesValue}
+                        onValueChange={setSurgeriesValue}
+                        minimumTrackTintColor={Colors[theme].tint}
+                        maximumTrackTintColor={theme === 'dark' ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.20)'}
+                        thumbTintColor={Colors[theme].tint}
+                        disabled={filtersDisabled}
+                        style={[styles.slider, filtersDisabled && styles.sliderDisabled]}
+                      />
+                    </Group>
 
-              <Group title="Property type">
-                <View style={styles.pillsRow}>
-                  {PROPERTY_TYPE_OPTIONS.map((t) => (
-                    <Pill
-                      key={t}
-                      label={t}
-                      selected={propertyTypes.has(t)}
-                      onPress={() => toggleSet(propertyTypes, setPropertyTypes, t)}
-                    />
-                  ))}
-                </View>
-              </Group>
+                    <Group title="Property type" disabled={filtersDisabled}>
+                      <View style={styles.pillsRow}>
+                        {PROPERTY_TYPE_OPTIONS.map((t) => (
+                          <Pill
+                            key={t}
+                            label={t}
+                            selected={propertyTypes.has(t)}
+                            onPress={filtersDisabled ? () => {} : () => toggleSet(propertyTypes, setPropertyTypes, t)}
+                            style={filtersDisabled ? styles.disabledPill : undefined}
+                          />
+                        ))}
+                      </View>
+                    </Group>
 
-              <Group title="Income type">
-                <View style={styles.pillsRow}>
-                  {INCOME_TYPE_OPTIONS.map((t) => (
-                    <Pill
-                      key={t}
-                      label={t}
-                      selected={incomeTypes.has(t)}
-                      onPress={() => toggleSet(incomeTypes, setIncomeTypes, t)}
-                    />
-                  ))}
-                </View>
-              </Group>
+                    <Group title="Income type" disabled={filtersDisabled}>
+                      <View style={styles.pillsRow}>
+                        {INCOME_TYPE_OPTIONS.map((t) => (
+                          <Pill
+                            key={t}
+                            label={t}
+                            selected={incomeTypes.has(t)}
+                            onPress={filtersDisabled ? () => {} : () => toggleSet(incomeTypes, setIncomeTypes, t)}
+                            style={filtersDisabled ? styles.disabledPill : undefined}
+                          />
+                        ))}
+                      </View>
+                    </Group>
 
-              <Group title="Fee income (max)">
-                <Text style={styles.valueText}>{feeIncomeMax ? formatCurrency(feeIncomeValue) : '—'}</Text>
-                <Slider
-                  minimumValue={0}
-                  maximumValue={Math.max(1, feeIncomeMax || 0)}
-                  step={feeIncomeMax > 0 ? Math.max(1000, Math.round(feeIncomeMax / 200)) : 1}
-                  value={feeIncomeValue}
-                  onValueChange={setFeeIncomeValue}
-                  minimumTrackTintColor={Colors[theme].tint}
-                  maximumTrackTintColor={theme === 'dark' ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.30)'}
-                  thumbTintColor={Colors[theme].tint}
-                  disabled={feeIncomeMax <= 0}
-                  style={[styles.slider, feeIncomeMax <= 0 && styles.sliderDisabled]}
-                />
-              </Group>
+                    <Group title="Fee income (max)" disabled={filtersDisabled}>
+                      <Text style={[styles.valueText, filtersDisabled && styles.disabledText]}>
+                        {feeIncomeMax ? formatCurrency(feeIncomeValue) : '—'}
+                      </Text>
+                      <Slider
+                        minimumValue={0}
+                        maximumValue={Math.max(1, feeIncomeMax || 0)}
+                        step={feeIncomeMax > 0 ? Math.max(1000, Math.round(feeIncomeMax / 200)) : 1}
+                        value={feeIncomeValue}
+                        onValueChange={setFeeIncomeValue}
+                        minimumTrackTintColor={Colors[theme].tint}
+                        maximumTrackTintColor={theme === 'dark' ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.30)'}
+                        thumbTintColor={Colors[theme].tint}
+                        disabled={feeIncomeMax <= 0 || filtersDisabled}
+                        style={[
+                          styles.slider,
+                          (feeIncomeMax <= 0 || filtersDisabled) && styles.sliderDisabled,
+                        ]}
+                      />
+                    </Group>
 
-              <Group title="Location + radius">
-                <TextInput
-                  value={locationText}
-                  onChangeText={setLocationText}
-                  placeholder="City / Region (e.g., London)"
-                  placeholderTextColor={theme === 'dark' ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.35)'}
-                  style={[
-                    styles.locationInput,
-                    {
-                      color: Colors[theme].text,
-                      backgroundColor: theme === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)',
-                      borderColor: theme === 'dark' ? 'rgba(255,255,255,0.14)' : 'rgba(0,0,0,0.10)',
-                    },
-                  ]}
-                  autoCapitalize="words"
-                  autoCorrect={false}
-                />
-                <Text style={styles.helper}>
-                  If we recognize the location, radius uses distance; otherwise we fall back to text match.
-                </Text>
-                <Text style={styles.valueText}>{radiusMiles} miles</Text>
-                <Slider
-                  minimumValue={1}
-                  maximumValue={100}
-                  step={1}
-                  value={radiusMiles}
-                  onValueChange={setRadiusMiles}
-                  minimumTrackTintColor={Colors[theme].tint}
-                  maximumTrackTintColor={theme === 'dark' ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.20)'}
-                  thumbTintColor={Colors[theme].tint}
-                  style={styles.slider}
-                />
-              </Group>
+                    <Group title="Location + radius" disabled={filtersDisabled}>
+                      <TextInput
+                        value={locationText}
+                        onChangeText={setLocationText}
+                        placeholder="City / Region (e.g., London)"
+                        placeholderTextColor={theme === 'dark' ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.35)'}
+                        editable={!filtersDisabled}
+                        style={[
+                          styles.locationInput,
+                          {
+                            color: Colors[theme].text,
+                            backgroundColor: theme === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)',
+                            borderColor: theme === 'dark' ? 'rgba(255,255,255,0.14)' : 'rgba(0,0,0,0.10)',
+                          },
+                          filtersDisabled && styles.disabledInput,
+                        ]}
+                        autoCapitalize="words"
+                        autoCorrect={false}
+                      />
+                      <Text style={[styles.helper, filtersDisabled && styles.disabledText]}>
+                        If we recognize the location, radius uses distance; otherwise we fall back to text match.
+                      </Text>
+                      <Text style={[styles.valueText, filtersDisabled && styles.disabledText]}>
+                        {radiusMiles} miles
+                      </Text>
+                      <Slider
+                        minimumValue={1}
+                        maximumValue={100}
+                        step={1}
+                        value={radiusMiles}
+                        onValueChange={setRadiusMiles}
+                        minimumTrackTintColor={Colors[theme].tint}
+                        maximumTrackTintColor={theme === 'dark' ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.20)'}
+                        thumbTintColor={Colors[theme].tint}
+                        disabled={filtersDisabled}
+                        style={[styles.slider, filtersDisabled && styles.sliderDisabled]}
+                      />
+                    </Group>
+                  </>
+                );
+              })()}
 
               <Text style={styles.resultsCount}>
                 {listings.length} results • {availableCount} available
               </Text>
             </View>
-          </View>
+          </>
         }
         renderItem={({ item }) => (
           <ListingCard
@@ -409,10 +512,18 @@ export default function SearchScreen() {
   );
 }
 
-function Group({ title, children }: { title: string; children: React.ReactNode }) {
+function Group({
+  title,
+  children,
+  disabled,
+}: {
+  title: string;
+  children: React.ReactNode;
+  disabled?: boolean;
+}) {
   return (
-    <View style={styles.group}>
-      <Text style={styles.groupTitle}>{title}</Text>
+    <View style={[styles.group, disabled && styles.groupDisabled]}>
+      <Text style={[styles.groupTitle, disabled && styles.disabledText]}>{title}</Text>
       <View style={styles.groupBody}>{children}</View>
     </View>
   );
@@ -445,16 +556,17 @@ function isAvailablePractice(listing: Listing): boolean {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  refreshIndicator: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    zIndex: 1000,
+    paddingVertical: 8,
+  },
   listHeader: {
-    paddingBottom: 6,
+    paddingBottom: 0,
   },
-  header: {
-    paddingTop: 16,
-    paddingBottom: 6,
-    gap: 4,
-  },
-  title: { fontSize: 26, fontWeight: '900' },
-  subtitle: { fontSize: 14, opacity: 0.75, fontWeight: '600' },
   filters: {
     paddingTop: 8,
     paddingBottom: 12,
@@ -516,6 +628,18 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   sliderDisabled: {
+    opacity: 0.5,
+  },
+  groupDisabled: {
+    opacity: 0.5,
+  },
+  disabledText: {
+    opacity: 0.4,
+  },
+  disabledPill: {
+    opacity: 0.4,
+  },
+  disabledInput: {
     opacity: 0.5,
   },
   listContent: {

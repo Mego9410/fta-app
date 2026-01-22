@@ -6,10 +6,12 @@ import Colors from '@/constants/Colors';
 import { Text } from '@/components/Themed';
 import { useColorScheme } from '@/components/useColorScheme';
 import { createLead } from '@/src/data/leadsRepo';
+import { enqueueOutbox, flushOutbox } from '@/src/data/outboxRepo';
 import { getLocalOnboardingState } from '@/src/data/onboardingLocalRepo';
-import { notifySellerIntakeByEmail } from '@/src/notifications/sellerIntakeEmail';
+import { buildSellerIntakeEmailPayload, notifySellerIntakeByEmail } from '@/src/notifications/sellerIntakeEmail';
 import { isSupabaseConfigured, requireSupabase } from '@/src/supabase/client';
 import { getProfile } from '@/src/supabase/profileRepo';
+import { track } from '@/src/telemetry/analytics';
 import { Field } from '@/src/ui/components/Field';
 import { PrimaryButton } from '@/src/ui/components/PrimaryButton';
 import { ScreenHeader } from '@/src/ui/components/ScreenHeader';
@@ -284,12 +286,19 @@ export default function SellYourBusinessScreen() {
               try {
                 await notifySellerIntakeByEmail({ lead });
               } catch (err: any) {
+                try {
+                  await enqueueOutbox('email_seller', buildSellerIntakeEmailPayload({ lead }));
+                  flushOutbox({ limit: 5 }).catch(() => {});
+                } catch {
+                  // ignore enqueue failure; lead itself is still saved locally/supabase
+                }
                 Alert.alert(
                   'Saved, but could not notify',
-                  err?.message ?? 'The lead was saved on this device, but email notification failed.',
+                  err?.message ?? 'The lead was saved and will notify the team when we’re back online.',
                 );
               }
 
+              track('seller_intake_submitted', { leadId: lead.id }).catch(() => {});
               setSubmitted(true);
             } finally {
               setSubmitting(false);
