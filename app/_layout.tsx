@@ -5,6 +5,7 @@ import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useState } from 'react';
 import 'react-native-reanimated';
+import 'react-native-gesture-handler';
 import { AppState, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -171,6 +172,7 @@ function RootLayoutNav() {
         <Stack.Screen name="testimonials/index" />
         <Stack.Screen name="testimonials/[id]" />
         <Stack.Screen name="web" />
+        <Stack.Screen name="swipe" />
         <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
       </Stack>
     </ThemeProvider>

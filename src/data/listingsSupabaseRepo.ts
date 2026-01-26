@@ -55,41 +55,61 @@ function rowToListing(row: any): Listing {
 export async function listListingsFromSupabase(query: ListingsQuery = {}): Promise<Listing[]> {
   try {
     const supabase = requireSupabase();
-    let supabaseQuery = supabase.from('listings').select('*');
+    
+    // Build base query
+    const buildQuery = () => {
+      let q = supabase.from('listings').select('*', { count: 'exact' });
+      if (query.status) {
+        q = q.eq('status', query.status);
+      }
+      if (query.featuredOnly) {
+        q = q.eq('featured', 1);
+      }
+      if (query.industry) {
+        q = q.eq('industry', query.industry);
+      }
+      if (query.locationState) {
+        q = q.eq('location_state', query.locationState);
+      }
+      if (query.minPrice != null) {
+        q = q.gte('asking_price', query.minPrice);
+      }
+      if (query.maxPrice != null) {
+        q = q.lte('asking_price', query.maxPrice);
+      }
+      if (query.confidentialOnly) {
+        q = q.eq('confidential', 1);
+      }
+      if (query.financingOnly) {
+        q = q.eq('financing_available', 1);
+      }
+      return q.order('featured', { ascending: false }).order('updated_at', { ascending: false });
+    };
 
-    if (query.status) {
-      supabaseQuery = supabaseQuery.eq('status', query.status);
-    }
-    if (query.featuredOnly) {
-      supabaseQuery = supabaseQuery.eq('featured', 1);
-    }
-    if (query.industry) {
-      supabaseQuery = supabaseQuery.eq('industry', query.industry);
-    }
-    if (query.locationState) {
-      supabaseQuery = supabaseQuery.eq('location_state', query.locationState);
-    }
-    if (query.minPrice != null) {
-      supabaseQuery = supabaseQuery.gte('asking_price', query.minPrice);
-    }
-    if (query.maxPrice != null) {
-      supabaseQuery = supabaseQuery.lte('asking_price', query.maxPrice);
-    }
-    if (query.confidentialOnly) {
-      supabaseQuery = supabaseQuery.eq('confidential', 1);
-    }
-    if (query.financingOnly) {
-      supabaseQuery = supabaseQuery.eq('financing_available', 1);
+    // Fetch all listings with pagination (Supabase default limit is 1000)
+    let allData: any[] = [];
+    let from = 0;
+    const pageSize = 1000;
+    let hasMore = true;
+
+    while (hasMore) {
+      const { data, error, count } = await buildQuery().range(from, from + pageSize - 1);
+
+      if (error) {
+        console.warn('Failed to fetch listings from Supabase:', error);
+        return [];
+      }
+
+      if (data && data.length > 0) {
+        allData = allData.concat(data);
+        from += pageSize;
+        hasMore = data.length === pageSize && (count === null || from < count);
+      } else {
+        hasMore = false;
+      }
     }
 
-    const { data, error } = await supabaseQuery.order('featured', { ascending: false }).order('updated_at', { ascending: false });
-
-    if (error) {
-      console.warn('Failed to fetch listings from Supabase:', error);
-      return [];
-    }
-
-    let listings = (data || []).map(rowToListing);
+    let listings = allData.map(rowToListing);
 
     // Keyword filtering (client-side since Supabase doesn't support multi-column LIKE easily)
     if (query.keyword) {
