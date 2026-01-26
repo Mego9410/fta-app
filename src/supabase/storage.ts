@@ -34,6 +34,8 @@ function getWebStorage(): StorageLike {
 }
 
 function getSecureStore(): StorageLike {
+  const MAX_SECURESTORE_SIZE = 2048; // bytes - SecureStore has a 2048 byte limit
+  
   return {
     async getItem(key) {
       try {
@@ -47,9 +49,19 @@ function getSecureStore(): StorageLike {
     },
     async setItem(key, value) {
       try {
+        // Check size before storing - SecureStore has a 2048 byte limit
+        // Calculate UTF-8 byte length (more accurate than string length for multi-byte characters)
+        const sizeInBytes = new TextEncoder().encode(value).length;
+        if (sizeInBytes > MAX_SECURESTORE_SIZE) {
+          console.warn(
+            `SecureStore setItem: Value for key "${key}" is ${sizeInBytes} bytes, exceeding the 2048 byte limit. ` +
+            'This may not be stored successfully. Consider using a different storage mechanism for large values.'
+          );
+        }
         await SecureStore.setItemAsync(key, value);
       } catch (error: any) {
         // SecureStore may fail if user interaction is not allowed (e.g., during background refresh)
+        // or if the value is too large
         // Silently fail - the session will be saved on next successful interaction
         console.warn('SecureStore setItem failed:', error?.message);
       }

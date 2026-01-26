@@ -15,8 +15,8 @@ import { formatCurrency } from '@/src/ui/format';
 import { Chip } from '@/src/ui/components/Chip';
 import { LiquidGlassBackButton } from '@/src/ui/components/LiquidGlassBackButton';
 import { ui } from '@/src/ui/theme';
-import { getListingMapUrl } from '@/src/ui/map/listingMap';
-import { StaticTileMap } from '@/src/ui/map/StaticTileMap';
+import { getListingMapUrl, getListingAreaRadius } from '@/src/ui/map/listingMap';
+import { InteractiveMap } from '@/src/ui/map/InteractiveMap';
 
 export default function ListingDetailScreen() {
   const params = useLocalSearchParams<{ id?: string }>();
@@ -69,6 +69,7 @@ export default function ListingDetailScreen() {
     return getListingMapUrl(listing, { width: 1024, height: 640, zoom: 7 });
   }, [listing]);
   const mapZoom = map?.coords.source === 'exact' ? 11 : map?.coords.source === 'lookup' ? 7 : 6;
+  const areaRadius = map?.coords ? getListingAreaRadius(map.coords) : undefined;
 
   const heroSlides = useMemo(() => {
     const slides: Array<{ uri: string; kind: 'map' | 'photo' }> = [];
@@ -249,12 +250,13 @@ export default function ListingDetailScreen() {
         <View style={styles.carousel}>
           {map?.coords ? (
             <View style={[styles.carouselSlide, { width: screenWidth }]}>
-              <StaticTileMap
+              <InteractiveMap
                 latitude={map.coords.latitude}
                 longitude={map.coords.longitude}
                 width={Math.max(1, Math.round(screenWidth))}
                 height={270}
-                zoom={mapZoom}
+                radiusMeters={areaRadius}
+                initialZoom={mapZoom}
               />
               <View style={styles.carouselScrim} pointerEvents="none" />
               <View style={styles.mapBadge} pointerEvents="none">
