@@ -32,6 +32,7 @@ export default function SwipeScreen() {
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
   const [triggerSwipe, setTriggerSwipe] = useState<'left' | 'right' | 'up' | null>(null);
+  const [actionHandled, setActionHandled] = useState(false);
 
   const loadListings = useCallback(async () => {
     setLoading(true);
@@ -104,21 +105,25 @@ export default function SwipeScreen() {
   const handleSwipeComplete = useCallback(() => {
     setProcessing(false);
     setTriggerSwipe(null); // Reset trigger
+    setActionHandled(false); // Reset action handled flag
     setCurrentIndex((prev) => prev + 1);
   }, []);
 
-  const handleSwipeRight = useCallback(async (listing: Listing) => {
-    if (processing) return;
-    setProcessing(true);
+  const handleSwipeRight = useCallback(async (listing: Listing, skipProcessingCheck: boolean = false, skipActionHandledCheck: boolean = false) => {
+    if (!skipProcessingCheck && processing) return;
+    if (!skipActionHandledCheck && actionHandled) return; // Prevent double-calling (only for gesture swipes)
+    if (!skipProcessingCheck) setProcessing(true);
+    setActionHandled(true);
     try {
       await toggleFavorite(listing.id);
     } catch (error) {
       console.error('Failed to save listing:', error);
       Alert.alert('Error', 'Failed to save listing. Please try again.');
+      setActionHandled(false); // Reset on error
     } finally {
-      setProcessing(false);
+      if (!skipProcessingCheck) setProcessing(false);
     }
-  }, [processing]);
+  }, [processing, actionHandled]);
 
   const handleSwipeLeft = useCallback(() => {
     // Just skip - no action needed
@@ -211,10 +216,26 @@ export default function SwipeScreen() {
       return;
     }
     
-    // For left/right, proceed immediately
+    // For left/right, trigger the action handler immediately, then animate
     setProcessing(true);
+    
+    if (direction === 'right') {
+      // Call the handler to save the favorite immediately
+      // Skip both processing check and actionHandled check since this is from button click
+      handleSwipeRight(currentListing, true, true).catch((error) => {
+        console.error('Failed to save listing:', error);
+        setProcessing(false);
+        setActionHandled(false);
+      });
+    } else if (direction === 'left') {
+      // Call the handler (which does nothing, but keeps consistency)
+      handleSwipeLeft();
+      setActionHandled(true); // Mark as handled to prevent double-calling
+    }
+    
+    // Trigger the swipe animation
     setTriggerSwipe(direction);
-  }, [currentListing, processing, handleSwipeUp]);
+  }, [currentListing, processing, handleSwipeUp, handleSwipeRight, handleSwipeLeft]);
 
   // Reset trigger after swipe is initiated
   useEffect(() => {
@@ -287,7 +308,7 @@ export default function SwipeScreen() {
                   index={0}
                   triggerSwipeDirection={triggerSwipe}
                   onSwipeLeft={() => handleSwipeLeft()}
-                  onSwipeRight={() => handleSwipeRight(listing)}
+                  onSwipeRight={() => handleSwipeRight(listing, false)}
                   onSwipeUp={() => handleSwipeUp(listing, true)}
                   onSwipeComplete={handleSwipeComplete}
                 />
