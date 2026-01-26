@@ -184,7 +184,7 @@ export function SwipeableListingCard({
       const absX = Math.abs(translateX.value);
       const absY = Math.abs(translateY.value);
       
-      // Check for up swipe (superlike) - negative Y means up
+      // Check for up swipe (request details) - negative Y means up
       if (translateY.value < -SWIPE_THRESHOLD && absY > absX) {
         runOnJS(performSwipe)('up');
         return;
@@ -285,7 +285,7 @@ export function SwipeableListingCard({
               <Text style={styles.overlayText}>NOPE</Text>
             </Animated.View>
             <Animated.View style={[styles.overlay, styles.superlikeOverlay, superlikeOpacity]} pointerEvents="none">
-              <Text style={styles.overlayText}>SUPERLIKE</Text>
+              <Text style={styles.overlayText}>REQUEST DETAILS</Text>
             </Animated.View>
           </>
         )}
@@ -304,9 +304,6 @@ export function SwipeableListingCard({
           <View style={styles.imageBottomLeft}>
             <Text style={styles.imageTitle} numberOfLines={2}>
               {listing.title}
-            </Text>
-            <Text style={styles.imageLocation} numberOfLines={1}>
-              {location}
             </Text>
             <View style={styles.pricePill}>
               <Text style={styles.pricePillText}>{formatCurrency(listing.askingPrice)}</Text>

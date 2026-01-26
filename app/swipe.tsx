@@ -17,6 +17,7 @@ import { isSupabaseConfigured } from '@/src/supabase/client';
 import { SwipeableListingCard } from '@/src/ui/components/SwipeableListingCard';
 import { SwipeActionButtons } from '@/src/ui/components/SwipeActionButtons';
 import { ScreenHeader } from '@/src/ui/components/ScreenHeader';
+import { LiquidGlassBackButton } from '@/src/ui/components/LiquidGlassBackButton';
 import { ui } from '@/src/ui/theme';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -123,55 +124,97 @@ export default function SwipeScreen() {
     // Just skip - no action needed
   }, []);
 
-  const handleSwipeUp = useCallback(async (listing: Listing) => {
+  const handleSwipeUp = useCallback(async (listing: Listing, shouldAnimate: boolean = false) => {
     if (processing) return;
-    setProcessing(true);
-    try {
-      // Get user profile data
-      const { name, email, phone } = await getProfileData();
+    
+    // Show confirmation dialog
+    Alert.alert(
+      'Request Details',
+      `Would you like to request details for "${listing.title}"?`,
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+          onPress: () => {
+            // If this was from a gesture swipe, we need to reset the card
+            // (the animation already happened, so we'll just mark as complete)
+            if (shouldAnimate) {
+              handleSwipeComplete();
+            }
+          },
+        },
+        {
+          text: 'Request Details',
+          onPress: async () => {
+            setProcessing(true);
+            try {
+              // Get user profile data
+              const { name, email, phone } = await getProfileData();
 
-      if (!name || !email || !phone) {
-        Alert.alert(
-          'Profile Required',
-          'Please complete your profile (name, email, phone) before superliking. You can update it in Profile settings.',
-          [
-            {
-              text: 'OK',
-              onPress: () => router.push('/(tabs)/profile'),
-            },
-          ]
-        );
-        setProcessing(false);
-        return;
-      }
+              if (!name || !email || !phone) {
+                Alert.alert(
+                  'Profile Required',
+                  'Please complete your profile (name, email, phone) before requesting details. You can update it in Profile settings.',
+                  [
+                    {
+                      text: 'OK',
+                      onPress: () => router.push('/(tabs)/profile'),
+                    },
+                  ]
+                );
+                setProcessing(false);
+                if (shouldAnimate) {
+                  handleSwipeComplete();
+                }
+                return;
+              }
 
-      // Create inquiry lead
-      await createLead({
-        type: 'buyerInquiry',
-        listingId: listing.id,
-        name: name.trim(),
-        email: email.trim(),
-        phone: phone.trim(),
-        message: `Superliked from Swipe Mode - ${listing.title}`,
-      });
+              // Create inquiry lead
+              await createLead({
+                type: 'buyerInquiry',
+                listingId: listing.id,
+                name: name.trim(),
+                email: email.trim(),
+                phone: phone.trim(),
+                message: `Requested details from Match My Practice - ${listing.title}`,
+              });
 
-      // Also save to favorites (superlike = like + inquiry)
-      await toggleFavorite(listing.id);
+              // Also save to favorites (request details = like + inquiry)
+              await toggleFavorite(listing.id);
 
-      Alert.alert('Superlike Sent!', `Your request for details about "${listing.title}" has been sent.`);
-    } catch (error) {
-      console.error('Failed to create inquiry:', error);
-      Alert.alert('Error', 'Failed to send inquiry. Please try again.');
-    } finally {
-      setProcessing(false);
-    }
-  }, [processing, getProfileData]);
+              // If this was from button click, trigger animation now
+              if (!shouldAnimate) {
+                setTriggerSwipe('up');
+              }
+              
+              Alert.alert('Request Sent!', `Your request for details about "${listing.title}" has been sent.`);
+            } catch (error) {
+              console.error('Failed to create inquiry:', error);
+              Alert.alert('Error', 'Failed to send request. Please try again.');
+              setProcessing(false);
+              if (shouldAnimate) {
+                handleSwipeComplete();
+              }
+            }
+          },
+        },
+      ]
+    );
+  }, [processing, getProfileData, handleSwipeComplete]);
 
   const triggerSwipeAction = useCallback((direction: 'left' | 'right' | 'up') => {
     if (!currentListing || processing) return;
+    
+    // For "up" (request details), show confirmation first
+    if (direction === 'up') {
+      handleSwipeUp(currentListing);
+      return;
+    }
+    
+    // For left/right, proceed immediately
     setProcessing(true);
     setTriggerSwipe(direction);
-  }, [currentListing, processing]);
+  }, [currentListing, processing, handleSwipeUp]);
 
   // Reset trigger after swipe is initiated
   useEffect(() => {
@@ -184,28 +227,38 @@ export default function SwipeScreen() {
     }
   }, [triggerSwipe]);
 
+  const renderCustomHeader = (subtitle: string) => (
+    <View style={[styles.customHeader, { paddingTop: insets.top + 4 }]}>
+      <LiquidGlassBackButton
+        fallbackHref="/(tabs)/profile/admin"
+        forceShow={true}
+        style={styles.customBackButton}
+      />
+      <View style={styles.centeredTitleContainer}>
+        <Text style={styles.centeredTitle} numberOfLines={2}>
+          Match My Practice
+        </Text>
+        {subtitle ? (
+          <Text style={styles.centeredSubtitle} numberOfLines={2}>
+            {subtitle}
+          </Text>
+        ) : null}
+      </View>
+    </View>
+  );
+
   if (loading) {
     return (
-      <View style={[styles.container, { paddingTop: insets.top }]}>
-        <ScreenHeader
-          title="Swipe Mode"
-          subtitle="Loading listings..."
-          fallbackHref="/(tabs)/profile/admin"
-          style={{ paddingHorizontal: 0 }}
-        />
+      <View style={styles.container}>
+        {renderCustomHeader('Loading listings...')}
       </View>
     );
   }
 
   if (!hasMore) {
     return (
-      <View style={[styles.container, { paddingTop: insets.top }]}>
-        <ScreenHeader
-          title="Swipe Mode"
-          subtitle="All done!"
-          fallbackHref="/(tabs)/profile/admin"
-          style={{ paddingHorizontal: 0 }}
-        />
+      <View style={styles.container}>
+        {renderCustomHeader('All done!')}
         <View style={styles.emptyState}>
           <Text style={styles.emptyTitle}>No more listings</Text>
           <Text style={styles.emptyBody}>
@@ -217,13 +270,8 @@ export default function SwipeScreen() {
   }
 
   return (
-    <GestureHandlerRootView style={[styles.container, { paddingTop: insets.top }]}>
-      <ScreenHeader
-        title="Swipe Mode"
-        subtitle={`${listings.length - currentIndex} remaining`}
-        fallbackHref="/(tabs)/profile/admin"
-        style={{ paddingHorizontal: 0 }}
-      />
+    <GestureHandlerRootView style={styles.container}>
+      {renderCustomHeader(`${listings.length - currentIndex} remaining`)}
       
       <View style={styles.cardStack}>
         {/* Render visible cards in reverse order so current is on top */}
@@ -240,7 +288,7 @@ export default function SwipeScreen() {
                   triggerSwipeDirection={triggerSwipe}
                   onSwipeLeft={() => handleSwipeLeft()}
                   onSwipeRight={() => handleSwipeRight(listing)}
-                  onSwipeUp={() => handleSwipeUp(listing)}
+                  onSwipeUp={() => handleSwipeUp(listing, true)}
                   onSwipeComplete={handleSwipeComplete}
                 />
               </View>
@@ -321,5 +369,34 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     opacity: 0.75,
     lineHeight: 24,
+  },
+  customHeader: {
+    paddingHorizontal: 0,
+    paddingBottom: 1,
+    position: 'relative',
+  },
+  customBackButton: {
+    position: 'absolute',
+    left: 24, // More padding from left wall
+    zIndex: 10,
+  },
+  centeredTitleContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 60, // Padding to account for back button on left
+    minHeight: 32,
+    paddingVertical: 2,
+  },
+  centeredTitle: {
+    fontSize: 22,
+    fontWeight: '900',
+    textAlign: 'center',
+  },
+  centeredSubtitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    opacity: 0.75,
+    textAlign: 'center',
+    marginTop: 2,
   },
 });

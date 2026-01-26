@@ -274,12 +274,12 @@ export default function AdminHomeScreen() {
         </View>
 
         <View style={styles.onboardingAdmin}>
-          <Text style={styles.sectionTitle}>Swipe Mode (Hidden Feature)</Text>
+          <Text style={styles.sectionTitle}>Match My Practice (Hidden Feature)</Text>
           <View style={styles.onboardingActions}>
             <Pressable
               style={[styles.btn, styles.btnPrimary]}
               onPress={() => router.push('/swipe')}>
-              <Text style={styles.btnPrimaryText}>Open Swipe Mode</Text>
+              <Text style={styles.btnPrimaryText}>Open Match My Practice</Text>
             </Pressable>
           </View>
         </View>
