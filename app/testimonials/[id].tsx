@@ -163,7 +163,7 @@ export default function TestimonialDetailScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+  container: { flex: 1, backgroundColor: '#f7f7f7' },
   wrap: {
     maxWidth: 720,
     width: '100%',
@@ -177,26 +177,27 @@ const styles = StyleSheet.create({
   openInlineText: {
     fontSize: 12,
     fontWeight: '800',
-    opacity: 0.8,
+    opacity: 0.9,
+    color: '#000000',
   },
-  body: { fontSize: 15, fontWeight: '600', opacity: 0.85, lineHeight: 22 },
+  body: { fontSize: 15, fontWeight: '600', opacity: 1.0, lineHeight: 22, color: '#000000' },
   card: {
     borderRadius: 14,
     padding: 16,
     borderWidth: StyleSheet.hairlineWidth,
-    backgroundColor: 'rgba(255,255,255,0.01)',
+    backgroundColor: '#FFFFFF',
     ...ui.shadow.card,
   },
-  quote: { fontSize: 16, fontWeight: '700', lineHeight: 24, opacity: 0.9 },
-  author: { fontSize: 13, fontWeight: '900' },
+  quote: { fontSize: 16, fontWeight: '700', lineHeight: 24, opacity: 1.0, color: '#000000' },
+  author: { fontSize: 13, fontWeight: '900', color: '#000000' },
   notice: {
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 14,
     padding: 14,
-    backgroundColor: 'rgba(255,255,255,0.01)',
+    backgroundColor: '#FFFFFF',
     ...ui.shadow.card,
   },
-  noticeTitle: { fontSize: 16, fontWeight: '900' },
-  noticeBody: { fontSize: 14, fontWeight: '600', opacity: 0.75, marginTop: 6 },
+  noticeTitle: { fontSize: 16, fontWeight: '900', color: '#000000' },
+  noticeBody: { fontSize: 14, fontWeight: '600', opacity: 0.85, marginTop: 6, color: '#000000' },
 });
 

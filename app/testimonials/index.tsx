@@ -52,10 +52,10 @@ function GoogleRatingBadge({
     <Pressable accessibilityRole="button" onPress={onPress} style={[styles.googleBadge, { borderColor }]}>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
         <View style={{ gap: 6 }}>
-          <Text style={{ fontSize: 13, fontWeight: '900' }}>Google rating</Text>
+          <Text style={{ fontSize: 13, fontWeight: '900', color: '#000000' }}>Google rating</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
             <StarRow rating={rating} />
-            <Text style={{ fontSize: 13, fontWeight: '900' }}>{rating.toFixed(1)}</Text>
+            <Text style={{ fontSize: 13, fontWeight: '900', color: '#000000' }}>{rating.toFixed(1)}</Text>
             <Text style={{ fontSize: 12, fontWeight: '800', color: subtle }}>
               ({reviewCount.toLocaleString()} reviews)
             </Text>
@@ -141,12 +141,12 @@ export default function TestimonialsScreen() {
               onPress={() => router.push({ pathname: '/web', params: { url: GOOGLE_REVIEWS_URL, title: 'Google reviews' } })}
             />
             {status === 'loading' ? (
-              <Text style={{ fontSize: 14, fontWeight: '700', opacity: 0.7 }}>Loading…</Text>
+              <Text style={{ fontSize: 14, fontWeight: '700', opacity: 0.85 }}>Loading…</Text>
             ) : null}
             {status === 'error' ? (
               <View style={[styles.notice, { borderColor }]}>
                 <Text style={{ fontSize: 16, fontWeight: '900' }}>Couldn’t load testimonials</Text>
-                <Text style={{ marginTop: 6, fontSize: 13, fontWeight: '700', opacity: 0.75 }}>{errorText}</Text>
+                <Text style={{ marginTop: 6, fontSize: 13, fontWeight: '700', opacity: 0.85 }}>{errorText}</Text>
                 <Text style={{ marginTop: 10, fontSize: 13, fontWeight: '800', opacity: 0.85 }} onPress={load}>
                   Tap to retry
                 </Text>
@@ -189,8 +189,8 @@ export default function TestimonialsScreen() {
         )}
         ListEmptyComponent={
           <View style={{ paddingTop: 20, gap: 6 }}>
-            <Text style={{ fontSize: 16, fontWeight: '900' }}>No testimonials found</Text>
-            <Text style={{ opacity: 0.75, fontWeight: '600' }}>Pull to refresh.</Text>
+            <Text style={{ fontSize: 16, fontWeight: '900', color: '#000000' }}>No testimonials found</Text>
+            <Text style={{ opacity: 0.85, fontWeight: '600' }}>Pull to refresh.</Text>
           </View>
         }
       />
@@ -199,30 +199,30 @@ export default function TestimonialsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+  container: { flex: 1, backgroundColor: '#f7f7f7' },
   googleBadge: {
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 14,
     padding: 14,
-    backgroundColor: 'rgba(255,255,255,0.01)',
+    backgroundColor: '#FFFFFF',
     ...ui.shadow.card,
   },
   notice: {
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 14,
     padding: 14,
-    backgroundColor: 'rgba(255,255,255,0.01)',
+    backgroundColor: '#FFFFFF',
     ...ui.shadow.card,
   },
   card: {
     borderRadius: 14,
     padding: 16,
     borderWidth: StyleSheet.hairlineWidth,
-    backgroundColor: 'rgba(255,255,255,0.01)',
+    backgroundColor: '#FFFFFF',
     ...ui.shadow.card,
   },
-  quote: { fontSize: 15, fontWeight: '700' },
-  author: { fontSize: 13, fontWeight: '900' },
-  date: { fontSize: 12, fontWeight: '800', opacity: 0.7 },
+  quote: { fontSize: 15, fontWeight: '700', color: '#000000' },
+  author: { fontSize: 13, fontWeight: '900', color: '#000000' },
+  date: { fontSize: 12, fontWeight: '800', opacity: 0.85 },
 });
 

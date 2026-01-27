@@ -102,6 +102,7 @@ export default function SavedScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#f7f7f7',
   },
   listContent: {
     paddingTop: 10,
@@ -113,9 +114,11 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: 18,
     fontWeight: '800',
+    color: '#000000',
   },
   emptyBody: {
-    opacity: 0.75,
+    opacity: 0.85,
+    color: '#000000',
   },
 });
 

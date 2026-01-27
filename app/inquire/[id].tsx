@@ -143,7 +143,7 @@ export default function InquireScreen() {
   }
 
   return (
-    <View style={{ flex: 1 }}>
+    <View style={{ flex: 1, backgroundColor: '#f7f7f7' }}>
       <ScrollView contentContainerStyle={styles.scroll}>
         <ScreenHeader
           title="Request details"
@@ -159,7 +159,7 @@ export default function InquireScreen() {
               onChangeText={setName}
               style={styles.input}
               placeholder="Your name"
-              placeholderTextColor="rgba(255,255,255,0.6)"
+              placeholderTextColor="rgba(0,0,0,0.45)"
             />
           </Field>
           <Field label="Email *">
@@ -168,7 +168,7 @@ export default function InquireScreen() {
               onChangeText={setEmail}
               style={styles.input}
               placeholder="you@email.com"
-              placeholderTextColor="rgba(255,255,255,0.6)"
+              placeholderTextColor="rgba(0,0,0,0.45)"
               autoCapitalize="none"
               keyboardType="email-address"
             />
@@ -179,7 +179,7 @@ export default function InquireScreen() {
               onChangeText={setPhone}
               style={styles.input}
               placeholder="(555) 555-5555"
-              placeholderTextColor="rgba(255,255,255,0.6)"
+              placeholderTextColor="rgba(0,0,0,0.45)"
               keyboardType="phone-pad"
             />
           </Field>
@@ -189,7 +189,7 @@ export default function InquireScreen() {
               onChangeText={setMessage}
               style={[styles.input, styles.textarea]}
               placeholder="What questions do you have? Preferred time to connect?"
-              placeholderTextColor="rgba(255,255,255,0.6)"
+              placeholderTextColor="rgba(0,0,0,0.45)"
               multiline
             />
           </Field>
@@ -265,6 +265,7 @@ const styles = StyleSheet.create({
   },
   container: {
     flex: 1,
+    backgroundColor: '#f7f7f7',
     paddingHorizontal: ui.layout.screenPaddingX,
     paddingVertical: ui.layout.screenPaddingY,
     gap: 10,
@@ -278,7 +279,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 15,
-    color: 'white',
+    color: '#000000',
   },
   textarea: { minHeight: 110, textAlignVertical: 'top' },
   btn: {

@@ -236,7 +236,7 @@ export default function ArticleScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+  container: { flex: 1, backgroundColor: '#f7f7f7' },
   wrap: {
     maxWidth: 720,
     width: '100%',
@@ -250,25 +250,26 @@ const styles = StyleSheet.create({
   openInlineText: {
     fontSize: 12,
     fontWeight: '800',
-    opacity: 0.8,
+    opacity: 0.9,
+    color: '#000000',
   },
   paragraphs: { gap: 12, paddingTop: 12 },
-  body: { fontSize: 15, fontWeight: '600', opacity: 0.85, lineHeight: 22 },
-  h2: { fontSize: 18, fontWeight: '900', lineHeight: 24, marginTop: 6 },
-  h3: { fontSize: 16, fontWeight: '900', lineHeight: 22, marginTop: 2 },
-  bold: { fontWeight: '900' },
-  italic: { fontStyle: 'italic' },
+  body: { fontSize: 15, fontWeight: '600', opacity: 1.0, lineHeight: 22, color: '#000000' },
+  h2: { fontSize: 18, fontWeight: '900', lineHeight: 24, marginTop: 6, color: '#000000' },
+  h3: { fontSize: 16, fontWeight: '900', lineHeight: 22, marginTop: 2, color: '#000000' },
+  bold: { fontWeight: '900', color: '#000000' },
+  italic: { fontStyle: 'italic', color: '#000000' },
   liRow: { flexDirection: 'row', gap: 10, alignItems: 'flex-start' },
-  liBullet: { fontSize: 16, fontWeight: '900', opacity: 0.9, paddingTop: 2 },
-  liText: { fontSize: 15, fontWeight: '600', opacity: 0.85, lineHeight: 22 },
+  liBullet: { fontSize: 16, fontWeight: '900', opacity: 1.0, paddingTop: 2, color: '#000000' },
+  liText: { fontSize: 15, fontWeight: '600', opacity: 1.0, lineHeight: 22, color: '#000000' },
   notice: {
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 14,
     padding: 14,
-    backgroundColor: 'rgba(255,255,255,0.01)',
+    backgroundColor: '#FFFFFF',
     ...ui.shadow.card,
   },
-  noticeTitle: { fontSize: 16, fontWeight: '900' },
-  noticeBody: { fontSize: 14, fontWeight: '600', opacity: 0.75, marginTop: 6 },
+  noticeTitle: { fontSize: 16, fontWeight: '900', color: '#000000' },
+  noticeBody: { fontSize: 14, fontWeight: '600', opacity: 0.85, marginTop: 6, color: '#000000' },
 });
 

@@ -67,10 +67,12 @@ export function ListingCard({
         ) : (
           <View style={[styles.image, styles.imagePlaceholder]} />
         )}
-        <View
-          style={[styles.imageScrim, { backgroundColor: showingMap ? 'rgba(0,0,0,0.30)' : 'rgba(0,0,0,0.15)' }]}
-          pointerEvents="none"
-        />
+        {!showingMap && (
+          <View
+            style={[styles.imageScrim, { backgroundColor: 'rgba(0,0,0,0.15)' }]}
+            pointerEvents="none"
+          />
+        )}
         <View style={styles.topLeftBadges}>
           {coords ? (
             <View style={styles.mapBadgeTopLeft} pointerEvents="none">
@@ -144,23 +146,26 @@ const styles = StyleSheet.create({
     borderRadius: ui.radius.lg,
     overflow: 'hidden',
     borderWidth: StyleSheet.hairlineWidth,
-    backgroundColor: 'rgba(255,255,255,0.01)',
+    backgroundColor: '#FFFFFF',
     marginBottom: 14,
     marginHorizontal: 4,
     ...ui.shadow.card,
   },
   imageWrap: {
     height: 210,
-    backgroundColor: '#111',
+    backgroundColor: '#333',
+    borderTopLeftRadius: ui.radius.lg,
+    borderTopRightRadius: ui.radius.lg,
   },
   image: {
     ...StyleSheet.absoluteFillObject,
     width: '100%',
     height: '100%',
     resizeMode: 'cover',
+    borderRadius: ui.radius.lg,
   },
   imagePlaceholder: {
-    backgroundColor: '#222',
+    backgroundColor: '#444',
   },
   imageScrim: {
     ...StyleSheet.absoluteFillObject,
@@ -214,7 +219,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.6,
   },
   badge: {
-    backgroundColor: 'rgba(0,0,0,0.55)',
+    backgroundColor: 'rgba(0,0,0,0.40)',
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: ui.radius.pill,
@@ -251,7 +256,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   refCodeBadgeBottom: {
-    backgroundColor: 'rgba(0,0,0,0.65)',
+    backgroundColor: 'rgba(0,0,0,0.50)',
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: ui.radius.pill,
@@ -267,7 +272,7 @@ const styles = StyleSheet.create({
   },
   pricePill: {
     alignSelf: 'flex-start',
-    backgroundColor: 'rgba(255,255,255,0.92)',
+    backgroundColor: '#E4AD25',
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: ui.radius.pill,
@@ -278,8 +283,8 @@ const styles = StyleSheet.create({
     color: '#0b0f1a',
   },
   imageTitle: {
-    color: 'white',
-    fontSize: 16,
+    color: '#000000',
+    fontSize: 20,
     fontWeight: '900',
   },
   body: {

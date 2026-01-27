@@ -442,14 +442,14 @@ export default function SearchScreen() {
                         value={locationText}
                         onChangeText={setLocationText}
                         placeholder="City / Region (e.g., London)"
-                        placeholderTextColor={theme === 'dark' ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.35)'}
+                        placeholderTextColor="#666666"
                         editable={!filtersDisabled}
                         style={[
                           styles.locationInput,
                           {
-                            color: Colors[theme].text,
-                            backgroundColor: theme === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)',
-                            borderColor: theme === 'dark' ? 'rgba(255,255,255,0.14)' : 'rgba(0,0,0,0.10)',
+                            color: '#000000',
+                            backgroundColor: '#E5E5E5',
+                            borderColor: '#CCCCCC',
                           },
                           filtersDisabled && styles.disabledInput,
                         ]}
@@ -555,7 +555,7 @@ function isAvailablePractice(listing: Listing): boolean {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+  container: { flex: 1, backgroundColor: '#f7f7f7' },
   refreshIndicator: {
     position: 'absolute',
     left: 0,
@@ -576,6 +576,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   groupTitle: {
+    color: '#000000',
     fontSize: 14,
     fontWeight: '800',
     opacity: 0.9,
@@ -598,16 +599,19 @@ const styles = StyleSheet.create({
   defaultsStatus: {
     fontSize: 13,
     fontWeight: '800',
-    opacity: 0.7,
+    opacity: 0.85,
+    color: '#000000',
   },
   valueText: {
     fontSize: 13,
     fontWeight: '800',
-    opacity: 0.75,
+    opacity: 0.85,
+    color: '#000000',
   },
   helper: {
     fontSize: 12,
-    opacity: 0.65,
+    opacity: 0.80,
+    color: '#000000',
   },
   locationInput: {
     borderWidth: StyleSheet.hairlineWidth,
@@ -620,8 +624,9 @@ const styles = StyleSheet.create({
   resultsCount: {
     fontSize: 13,
     fontWeight: '800',
-    opacity: 0.75,
+    opacity: 0.85,
     marginTop: 2,
+    color: '#000000',
   },
   slider: {
     height: 36,
@@ -649,7 +654,7 @@ const styles = StyleSheet.create({
     paddingTop: 30,
     gap: 6,
   },
-  emptyTitle: { fontSize: 18, fontWeight: '800' },
-  emptyBody: { opacity: 0.75 },
+  emptyTitle: { fontSize: 18, fontWeight: '800', color: '#000000' },
+  emptyBody: { opacity: 0.85, color: '#000000' },
 });
 

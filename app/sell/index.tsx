@@ -132,7 +132,7 @@ export default function SellYourBusinessScreen() {
   }
 
   return (
-    <View style={{ flex: 1 }}>
+    <View style={{ flex: 1, backgroundColor: '#f7f7f7' }}>
       <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: scrollBottomPad }]}>
         <ScreenHeader
           title="Sell a practice"
@@ -372,8 +372,8 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   groupHeader: { gap: 2 },
-  groupTitle: { fontSize: 14, fontWeight: '900' },
-  groupSubtitle: { fontSize: 12, fontWeight: '700', opacity: 0.65 },
+  groupTitle: { fontSize: 14, fontWeight: '900', color: '#000000' },
+  groupSubtitle: { fontSize: 12, fontWeight: '700', opacity: 0.80, color: '#000000' },
   pillsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   surgeriesRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   surgeriesValue: {
@@ -385,7 +385,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  surgeriesValueText: { fontSize: 16, fontWeight: '900' },
-  groupHint: { fontSize: 12, fontWeight: '600', opacity: 0.6 },
+  surgeriesValueText: { fontSize: 16, fontWeight: '900', color: '#000000' },
+  groupHint: { fontSize: 12, fontWeight: '600', opacity: 0.80, color: '#000000' },
 });
 

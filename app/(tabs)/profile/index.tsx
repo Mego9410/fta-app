@@ -372,6 +372,7 @@ function ToggleRow({
 const styles = StyleSheet.create({
   wrapper: {
     flex: 1,
+    backgroundColor: '#f7f7f7',
   },
   container: {
     gap: 14,

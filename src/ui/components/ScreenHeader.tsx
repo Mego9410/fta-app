@@ -73,11 +73,13 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 22,
     fontWeight: '900',
+    color: '#000000',
   },
   subtitle: {
     fontSize: 14,
     fontWeight: '600',
-    opacity: 0.75,
+    opacity: 0.85,
+    color: '#000000',
   },
   right: {
     marginLeft: 6,

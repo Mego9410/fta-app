@@ -16,14 +16,11 @@ export function Pill({
   onPress: () => void;
   style?: ViewStyle;
 }) {
-  const theme = useColorScheme() ?? 'light';
-  const bg = selected
-    ? Colors[theme].tint
-    : theme === 'dark'
-      ? 'rgba(255,255,255,0.10)'
-      : 'rgba(0,0,0,0.05)';
-  const borderColor = theme === 'dark' ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.10)';
-  const textColor = selected ? '#0b0f1a' : Colors[theme].text;
+  // Gold accent for selected state (website style)
+  // Light theme only - visible grey for unselected
+  const bg = selected ? '#E4AD25' : '#E5E5E5';
+  const borderColor = selected ? '#E4AD25' : '#CCCCCC';
+  const textColor = selected ? '#0b0f1a' : '#000000';
 
   return (
     <Pressable

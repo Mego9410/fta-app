@@ -344,7 +344,7 @@ export default function SwipeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: 'transparent',
+    backgroundColor: '#f7f7f7',
   },
   cardStack: {
     flex: 1,
@@ -383,13 +383,15 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: '900',
     textAlign: 'center',
+    color: '#000000',
   },
   emptyBody: {
     fontSize: 16,
     fontWeight: '600',
     textAlign: 'center',
-    opacity: 0.75,
+    opacity: 0.85,
     lineHeight: 24,
+    color: '#000000',
   },
   customHeader: {
     paddingHorizontal: 0,
@@ -412,12 +414,14 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '900',
     textAlign: 'center',
+    color: '#000000',
   },
   centeredSubtitle: {
     fontSize: 14,
     fontWeight: '600',
-    opacity: 0.75,
+    opacity: 0.85,
     textAlign: 'center',
     marginTop: 2,
+    color: '#000000',
   },
 });

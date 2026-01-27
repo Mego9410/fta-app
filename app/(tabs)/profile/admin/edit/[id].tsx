@@ -92,7 +92,7 @@ export default function AdminEditListingScreen() {
   }
 
   return (
-    <View style={{ flex: 1 }}>
+    <View style={{ flex: 1, backgroundColor: '#f7f7f7' }}>
       <ScrollView contentContainerStyle={styles.scroll}>
         <ScreenHeader
           mode="tabs"
@@ -213,6 +213,7 @@ const styles = StyleSheet.create({
   },
   container: {
     flex: 1,
+    backgroundColor: '#f7f7f7',
     paddingHorizontal: ui.layout.screenPaddingX,
     paddingVertical: ui.layout.screenPaddingY,
     gap: 10,

@@ -374,7 +374,7 @@ const styles = StyleSheet.create({
     borderRadius: ui.radius.lg,
     overflow: 'hidden',
     borderWidth: StyleSheet.hairlineWidth,
-    backgroundColor: 'rgba(255,255,255,0.01)',
+    backgroundColor: '#FFFFFF',
     ...ui.shadow.card,
   },
   imageWrap: {
@@ -513,7 +513,7 @@ const styles = StyleSheet.create({
   },
   pricePill: {
     alignSelf: 'flex-start',
-    backgroundColor: 'rgba(255,255,255,0.95)',
+    backgroundColor: '#E4AD25',
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: ui.radius.pill,

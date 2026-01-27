@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import * as WebBrowser from 'expo-web-browser';
 import { Image, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { BlurView } from 'expo-blur';
 
 import { Text } from '@/components/Themed';
 import Colors from '@/constants/Colors';
@@ -87,9 +88,10 @@ export default function ListingDetailScreen() {
   const cardBg = theme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.03)';
   const cardBorder = theme === 'dark' ? 'rgba(255,255,255,0.14)' : 'rgba(0,0,0,0.10)';
   const tonalText = theme === 'dark' ? 'rgba(255,255,255,0.92)' : 'rgba(0,0,0,0.78)';
-  const saveBg = theme === 'dark' ? 'rgba(255,255,255,0.10)' : '#000';
-  const saveText = theme === 'dark' ? 'rgba(255,255,255,0.92)' : 'white';
-  const enquireBg = Colors[theme].tint;
+  // Force light mode for save/request details menu
+  const saveBg = 'rgba(255, 255, 255, 0.6)';
+  const saveText = '#000000';
+  const enquireBg = Colors.light.tint;
   const enquireText = '#0b0f1a';
 
   const keyDetails = useMemo(() => {
@@ -291,7 +293,7 @@ export default function ListingDetailScreen() {
             {listing.financingAvailable ? <Chip label="Financing Available" /> : null}
           </View>
 
-          <View style={[styles.card, { backgroundColor: cardBg, borderColor: cardBorder }]}>
+          <View style={[styles.card, { backgroundColor: '#FFFFFF', borderColor: cardBorder }]}>
             <Text style={styles.cardTitle}>Key details</Text>
             <View style={styles.detailGrid}>
               {keyDetails.map((d) => (
@@ -306,7 +308,7 @@ export default function ListingDetailScreen() {
           </View>
 
           {(detailedInformation || moreInfoUrl) ? (
-            <View style={[styles.card, { backgroundColor: cardBg, borderColor: cardBorder }]}>
+            <View style={[styles.card, { backgroundColor: '#FFFFFF', borderColor: cardBorder }]}>
               <Text style={styles.cardTitle}>Detailed Information</Text>
               {detailedInformation ? (
                 <Text style={styles.detailedInfoText}>{detailedInformation}</Text>
@@ -356,20 +358,21 @@ export default function ListingDetailScreen() {
           style={[
             styles.ctaFloating,
             {
-              backgroundColor: theme === 'dark' ? 'rgba(15, 23, 42, 0.55)' : 'rgba(255, 255, 255, 0.70)',
-              borderColor: theme === 'dark' ? 'rgba(255,255,255,0.14)' : 'rgba(0,0,0,0.10)',
+              backgroundColor: 'rgba(255, 255, 255, 0.70)',
+              borderColor: 'rgba(0,0,0,0.10)',
             },
           ]}>
           <Pressable
-            style={[styles.ctaBtn, { backgroundColor: saveBg }]}
+            style={[styles.ctaBtn, { borderWidth: 1, borderColor: '#CCCCCC', overflow: 'hidden' }]}
             onPress={async () => {
               const next = await toggleFavorite(listing.id);
               setSaved(next);
             }}>
+            <BlurView intensity={20} tint="light" style={StyleSheet.absoluteFill} />
             <FontAwesome
               name={saved ? 'heart' : 'heart-o'}
               size={18}
-              color={saved ? '#d62828' : saveText}
+              color={saveText}
             />
             <Text style={[styles.ctaText, { color: saveText }]}>{saved ? 'Saved' : 'Save'}</Text>
           </Pressable>
@@ -395,7 +398,7 @@ export default function ListingDetailScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1 },
+  root: { flex: 1, backgroundColor: '#f7f7f7' },
   scrollContent: {
     paddingBottom: 140,
   },
@@ -472,15 +475,18 @@ const styles = StyleSheet.create({
   price: {
     fontSize: 24,
     fontWeight: '900',
+    color: '#000000',
   },
   title: {
     fontSize: 22,
     fontWeight: '900',
+    color: '#000000',
   },
   subtitle: {
     fontSize: 14,
-    opacity: 0.75,
+    opacity: 0.85,
     fontWeight: '600',
+    color: '#000000',
   },
   statusBanner: {
     alignSelf: 'flex-start',
@@ -507,10 +513,17 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     padding: ui.spacing.md,
     gap: 10,
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
   cardTitle: {
     fontSize: 16,
     fontWeight: '900',
+    color: '#000000',
   },
   detailGrid: {
     flexDirection: 'row',
@@ -525,22 +538,26 @@ const styles = StyleSheet.create({
   detailLabel: {
     fontSize: 12,
     fontWeight: '800',
-    opacity: 0.7,
+    opacity: 0.85,
+    color: '#000000',
   },
   detailValue: {
     fontSize: 14,
     fontWeight: '900',
+    color: '#000000',
   },
   body: {
     fontSize: 15,
-    opacity: 0.9,
+    opacity: 1.0,
     lineHeight: 21,
+    color: '#000000',
   },
   detailedInfoText: {
     fontSize: 15,
-    opacity: 0.9,
+    opacity: 1.0,
     lineHeight: 22,
     fontWeight: '600',
+    color: '#000000',
   },
   moreInfoBtn: {
     marginTop: 6,

@@ -24,10 +24,12 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 22,
     fontWeight: '900',
+    color: '#000000',
   },
   subtitle: {
     fontSize: 14,
-    opacity: 0.75,
+    opacity: 0.85,
     fontWeight: '600',
+    color: '#000000',
   },
 });

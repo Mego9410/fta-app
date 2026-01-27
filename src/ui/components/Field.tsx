@@ -49,7 +49,7 @@ export function Field({
 
 const styles = StyleSheet.create({
   field: { gap: 6 },
-  label: { fontSize: 13, fontWeight: '700', opacity: 0.8 },
+  label: { fontSize: 13, fontWeight: '700', opacity: 0.9, color: '#000000' },
   input: {
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: ui.radius.sm,

@@ -6,10 +6,11 @@ import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useState } from 'react';
 import 'react-native-reanimated';
 import 'react-native-gesture-handler';
-import { AppState, Pressable, StyleSheet, View } from 'react-native';
+import { AppState, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import * as Notifications from 'expo-notifications';
+import { StatusBar } from 'expo-status-bar';
 
 import { useColorScheme } from '@/components/useColorScheme';
 import { Text } from '@/components/Themed';
@@ -21,6 +22,7 @@ import { setupNotificationHandlers } from '@/src/notifications/notifications';
 import { isSupabaseRequiredButMissing } from '@/src/supabase/client';
 import { initTelemetry } from '@/src/telemetry';
 import { ui } from '@/src/ui/theme';
+import { LoadingScreen } from '@/src/ui/components/LoadingScreen';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -50,6 +52,12 @@ export default function RootLayout() {
   }, [error]);
 
   useEffect(() => {
+    // Skip database initialization on web (SQLite doesn't work on web)
+    if (Platform.OS === 'web') {
+      setDbReady(true);
+      return;
+    }
+
     let cancelled = false;
     (async () => {
       try {
@@ -72,6 +80,9 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (!loaded || !dbReady) return;
+    // Skip app-specific initialization on web
+    if (Platform.OS === 'web') return;
+
     // Background listings sync (throttled) so users see fresh listings without Admin action.
     maybeSyncListingsFromWebsite().catch(() => {
       // best-effort: keep cached listings if it fails
@@ -93,6 +104,9 @@ export default function RootLayout() {
   }, [dbReady, loaded]);
 
   useEffect(() => {
+    // Skip AppState listener on web
+    if (Platform.OS === 'web') return;
+
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active') {
         flushOutbox().catch(() => {});
@@ -103,6 +117,9 @@ export default function RootLayout() {
 
   // Set up notification handlers
   useEffect(() => {
+    // Skip notification handlers on web
+    if (Platform.OS === 'web') return;
+
     const unsubscribe = setupNotificationHandlers(
       // Handle notifications received while app is foregrounded
       (notification) => {
@@ -124,10 +141,11 @@ export default function RootLayout() {
   }, [dbError]);
 
   if (!loaded || !dbReady) {
-    return null;
+    return <LoadingScreen />;
   }
 
-  if (isSupabaseRequiredButMissing) {
+  // Skip Supabase check on web (landing page doesn't need it)
+  if (Platform.OS !== 'web' && isSupabaseRequiredButMissing) {
     return (
       <View style={styles.misconfigPage}>
         <Text style={styles.misconfigTitle}>App configuration error</Text>
@@ -155,6 +173,7 @@ function RootLayoutNav() {
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+      <StatusBar style="dark" />
       <Stack
         screenOptions={{
           // Hide the header entirely so there is no empty gap at the top of stack screens.
@@ -173,6 +192,7 @@ function RootLayoutNav() {
         <Stack.Screen name="testimonials/[id]" />
         <Stack.Screen name="web" />
         <Stack.Screen name="swipe" />
+        <Stack.Screen name="landing" />
         <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
       </Stack>
     </ThemeProvider>

@@ -15,13 +15,16 @@ export function SecondaryButton({
   style?: ViewStyle;
 }) {
   const theme = useColorScheme() ?? 'light';
-  const backgroundColor = theme === 'dark' ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.06)';
+  // White background with gold border and gold text (website style)
+  const backgroundColor = '#FFFFFF';
+  const borderColor = '#F8C859';
+  const textColor = '#F8C859';
   return (
     <Pressable
       disabled={disabled}
       onPress={onPress}
-      style={[styles.btn, { backgroundColor }, disabled && styles.btnDisabled, style]}>
-      <Text style={styles.text}>{title}</Text>
+      style={[styles.btn, { backgroundColor, borderColor, borderWidth: 1 }, disabled && styles.btnDisabled, style]}>
+      <Text style={[styles.text, { color: textColor }]}>{title}</Text>
     </Pressable>
   );
 }

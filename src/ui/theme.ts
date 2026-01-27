@@ -18,19 +18,18 @@ export const ui = {
     screenPaddingX: 16,
     // Used by many screens historically (v1) for vertical breathing room.
     screenPaddingY: 16,
-    // Horizontal inset for the floating bottom tab bar (“menu bar”) only.
+    // Horizontal inset for the floating bottom tab bar ("menu bar") only.
     // Smaller value = wider tab bar (closer to screen edges).
     tabBarInsetX: 50,
   },
   shadow: {
-    // RN cross-platform-ish “soft card” shadow
+    // RN cross-platform-ish "soft card" shadow - subtle like website
     card: {
       shadowColor: '#000',
-      shadowOpacity: 0.10,
-      shadowRadius: 14,
-      shadowOffset: { width: 0, height: 6 },
-      elevation: 3,
+      shadowOpacity: 0.08,
+      shadowRadius: 12,
+      shadowOffset: { width: 0, height: 4 },
+      elevation: 2,
     },
   },
 };
-

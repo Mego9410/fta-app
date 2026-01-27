@@ -17,9 +17,9 @@ function TabBarIcon(props: {
 }
 
 export default function TabLayout() {
-  const colorScheme = useColorScheme();
-  const scheme = (colorScheme ?? 'light') as 'light' | 'dark';
   const insets = useSafeAreaInsets();
+  // Force light mode for the tab bar
+  const scheme = 'light' as 'light' | 'dark';
   const tabBarHeight = 66;
   // Give the tab bar a little breathing room above the bottom edge (especially on Android).
   const tabBarBottom = Math.max(insets.bottom, ui.spacing.md);

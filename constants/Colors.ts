@@ -3,8 +3,8 @@ const accentGold = '#e4ad25';
 
 export default {
   light: {
-    text: '#000',
-    background: '#fff',
+    text: '#000000',
+    background: '#f7f7f7',
     tint: accentGold,
     tabIconDefault: 'rgba(0,0,0,0.45)',
     tabIconSelected: accentGold,

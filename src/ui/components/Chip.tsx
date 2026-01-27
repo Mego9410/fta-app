@@ -5,9 +5,9 @@ import { useColorScheme } from '@/components/useColorScheme';
 import { ui } from '@/src/ui/theme';
 
 export function Chip({ label }: { label: string }) {
-  const theme = useColorScheme() ?? 'light';
-  const backgroundColor = theme === 'dark' ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.06)';
-  const borderColor = theme === 'dark' ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.10)';
+  // Dark grey background with white text
+  const backgroundColor = '#666666';
+  const borderColor = '#666666';
   return (
     <View style={[styles.chip, { backgroundColor, borderColor }]}>
       <Text style={styles.text}>{label}</Text>
@@ -26,7 +26,7 @@ const styles = StyleSheet.create({
   text: {
     fontSize: 12,
     fontWeight: '700',
-    opacity: 0.8,
+    color: '#FFFFFF',
   },
 });
 

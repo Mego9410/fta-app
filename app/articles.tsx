@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { FlatList, Platform, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 
 import { Text } from '@/components/Themed';
+import Colors from '@/constants/Colors';
 import type { ArticlePreview } from '@/src/data/webContent/articles';
 import { fetchArticleDetail, fetchLatestArticlePreviews } from '@/src/data/webContent/articles';
 import { useColorScheme } from '@/components/useColorScheme';
@@ -147,8 +148,8 @@ export default function ArticlesScreen() {
         )}
         ListEmptyComponent={
           <View style={{ paddingTop: 20, gap: 6 }}>
-            <Text style={{ fontSize: 16, fontWeight: '900' }}>{query.trim() ? 'No matches' : 'No articles found'}</Text>
-            <Text style={{ opacity: 0.75, fontWeight: '600' }}>
+            <Text style={{ fontSize: 16, fontWeight: '900', color: '#000000' }}>{query.trim() ? 'No matches' : 'No articles found'}</Text>
+            <Text style={{ opacity: 0.85, fontWeight: '600' }}>
               {query.trim() ? 'Try a different search.' : 'Pull to refresh.'}
             </Text>
           </View>
@@ -159,7 +160,7 @@ export default function ArticlesScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+  container: { flex: 1, backgroundColor: '#f7f7f7' },
   header: {
     gap: 12,
     paddingBottom: 8,
@@ -168,12 +169,12 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
   },
   title: { fontSize: 26, fontWeight: '900' },
-  subtitle: { fontSize: 14, fontWeight: '600', opacity: 0.75 },
+  subtitle: { fontSize: 14, fontWeight: '600', opacity: 0.85 },
   card: {
     borderRadius: ui.radius.md,
     padding: 16,
     borderWidth: StyleSheet.hairlineWidth,
-    backgroundColor: 'rgba(255,255,255,0.01)',
+    backgroundColor: '#FFFFFF',
     ...ui.shadow.card,
     maxWidth: 720,
     width: '100%',
@@ -185,9 +186,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 6,
   },
-  cardTitle: { fontSize: 16, fontWeight: '900' },
+  cardTitle: { fontSize: 16, fontWeight: '900', color: '#000000' },
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: 0, marginTop: 6 },
-  metaText: { fontSize: 12, fontWeight: '800', opacity: 0.7 },
-  excerpt: { fontSize: 14, fontWeight: '600', opacity: 0.75, marginTop: 6 },
+  metaText: { fontSize: 12, fontWeight: '800', opacity: 0.85, color: '#000000' },
+  excerpt: { fontSize: 14, fontWeight: '600', opacity: 0.85, marginTop: 6, color: '#000000' },
 });
 

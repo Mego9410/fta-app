@@ -15,9 +15,8 @@ export function PrimaryButton({
   disabled?: boolean;
   style?: ViewStyle;
 }) {
-  const theme = useColorScheme() ?? 'light';
-  const backgroundColor = Colors[theme].tint;
-  // Gold-on-black palette needs dark text on gold in both themes.
+  // Use website gold color #F8C859 for buttons
+  const backgroundColor = '#F8C859';
   const textColor = '#0b0f1a';
   return (
     <Pressable

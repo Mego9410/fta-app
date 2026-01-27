@@ -11,7 +11,6 @@ import type { Listing } from '@/src/domain/types';
 import { listListings } from '@/src/data/listingsRepo';
 import { getListingsSyncMeta, maybeSyncListingsFromWebsite } from '@/src/data/listingsSync';
 import { useColorScheme } from '@/components/useColorScheme';
-import { Pill } from '@/src/ui/components/Pill';
 import { PrimaryButton } from '@/src/ui/components/PrimaryButton';
 import { SecondaryButton } from '@/src/ui/components/SecondaryButton';
 import { formatCurrency } from '@/src/ui/format';
@@ -21,6 +20,7 @@ import { fetchLatestTestimonials, type TestimonialPreview } from '@/src/data/web
 import { getListingMapCoords } from '@/src/ui/map/listingMap';
 import { StaticTileMap } from '@/src/ui/map/StaticTileMap';
 import { getSurgeriesCountFromTags } from '@/src/ui/searchFilters';
+import { LoadingScreen } from '@/src/ui/components/LoadingScreen';
 
 function extractRefCode(listing: Listing): string | null {
   // Extract from summary (e.g., "Ref. 14-96-3452")
@@ -52,8 +52,14 @@ export default function HomeScreen() {
   const [testimonials, setTestimonials] = useState<TestimonialPreview[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [syncLine, setSyncLine] = useState<string>('');
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [showLoadingScreen, setShowLoadingScreen] = useState(true);
+  const [fadeOutLoading, setFadeOutLoading] = useState(false);
 
   const load = useCallback(async () => {
+    const loadStartTime = Date.now();
+    const minLoadingDuration = 2500; // Minimum 2.5 seconds to show full animation
+    
     await maybeSyncListingsFromWebsite();
 
     // Listings: show a small "new listings" sampler. Search is the main discovery surface.
@@ -111,6 +117,19 @@ export default function HomeScreen() {
     ]);
     setArticles(articleRows);
     setTestimonials(testimonialRows);
+    setInitialLoading(false);
+    
+    // Ensure loading screen shows for minimum duration, then fade out
+    const elapsedTime = Date.now() - loadStartTime;
+    const remainingTime = Math.max(0, minLoadingDuration - elapsedTime);
+    setTimeout(() => {
+      // Start fade-out animation
+      setFadeOutLoading(true);
+      // Hide the component after fade-out completes (600ms)
+      setTimeout(() => {
+        setShowLoadingScreen(false);
+      }, 600);
+    }, remainingTime);
   }, []);
 
   useEffect(() => {
@@ -129,6 +148,20 @@ export default function HomeScreen() {
 
   return (
     <View style={styles.container}>
+      {showLoadingScreen && (
+        <View 
+          style={[
+            StyleSheet.absoluteFill, 
+            { 
+              zIndex: 9999, 
+              elevation: 9999,
+              backgroundColor: '#ffffff',
+            }
+          ]} 
+          pointerEvents={fadeOutLoading ? 'none' : 'auto'}>
+          <LoadingScreen fadeOut={fadeOutLoading} />
+        </View>
+      )}
       {refreshing && (
         <View style={[styles.refreshIndicator, { top: insets.top + 10 }]}>
           <ActivityIndicator size="small" color={Colors[theme].tint} />
@@ -151,32 +184,19 @@ export default function HomeScreen() {
         }}>
         {/* Hero */}
         <View style={[styles.hero, { borderColor: cardBorder }]}>
-          <Image
-            accessibilityLabel="Frank Taylor & Associates logo"
-            source={require('../../assets/images/FTA.jpg')}
-            style={styles.brandLogo}
-            resizeMode="contain"
-          />
+          <View style={styles.brandLogoCard}>
+            <Image
+              accessibilityLabel="Frank Taylor & Associates logo"
+              source={require('../../assets/images/FTA.jpg')}
+              style={styles.brandLogoBackground}
+              resizeMode="contain"
+            />
+          </View>
           <Text style={styles.heroTitle}>Buy or sell a dental practice with confidence.</Text>
-          <Text style={styles.heroSubtitle}>
-            Browse practices for sale, read the latest insights, and explore recent client stories.
-          </Text>
 
           <View style={styles.heroButtons}>
-            <PrimaryButton title="Find a practice" onPress={() => router.push('/(tabs)/search')} style={{ flex: 1 }} />
+            <PrimaryButton title="Find a practice" onPress={() => router.push('/(tabs)/search')} style={{ flex: 1, backgroundColor: '#e4ad25' }} />
             <SecondaryButton title="Sell a practice" onPress={() => router.push('/sell' as any)} style={{ flex: 1 }} />
-          </View>
-
-          <View style={styles.quickLinks}>
-            <Pill label="Browse all" onPress={() => router.push('/(tabs)/search')} />
-            <Pill
-              label="Latest articles"
-              onPress={() => router.push('/articles')}
-            />
-            <Pill
-              label="Testimonials"
-              onPress={() => router.push({ pathname: '/testimonials' } as any)}
-            />
           </View>
         </View>
 
@@ -197,7 +217,6 @@ export default function HomeScreen() {
               renderItem={({ item }) => (
                 <ListingCarouselCard
                   listing={item}
-                  borderColor={cardBorder}
                   onPress={() =>
                     router.push({
                       pathname: '/listings/[id]',
@@ -208,82 +227,30 @@ export default function HomeScreen() {
               )}
             />
           ) : (
-            <EmptyState title="No listings yet" body="Add listings from Admin to get started." />
+            <LoadingScreen compact />
           )}
         </SectionCard>
 
-        {/* Latest articles */}
-        <SectionCard
-          borderColor={cardBorder}
-          title="Latest articles"
-          subtitle="Short reads from the FTA website."
-          actionLabel="See all"
-          onAction={() => router.push('/articles')}>
-          {articles.length ? (
-            <View style={styles.articleList}>
-              {articles.slice(0, 3).map((a, idx) => (
-                <View key={a.url}>
-                  <ArticleRow
-                    title={a.title}
-                    dateText={a.dateText ?? undefined}
-                    onPress={() => router.push({ pathname: '/article', params: { url: a.url } })}
-                  />
-                  {idx < Math.min(articles.length, 3) - 1 ? <Divider /> : null}
-                </View>
-              ))}
-            </View>
-          ) : (
-            <EmptyState title="Insights and updates" body="Tap “See all” to read the latest articles on the FTA website." />
-          )}
-        </SectionCard>
-
-        {/* Testimonials */}
-        <SectionCard
-          borderColor={cardBorder}
-          title="Testimonials"
-          subtitle="Recent client stories and outcomes."
-          actionLabel="See all"
-          onAction={() => router.push({ pathname: '/testimonials' } as any)}>
-          {testimonials.length ? (
-            <FlatList
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              data={testimonials}
-              keyExtractor={(t) => t.id}
-              contentContainerStyle={{ gap: 12, paddingVertical: 2 }}
-              renderItem={({ item }) => (
-                <TestimonialCarouselCard
-                  borderColor={cardBorder}
-                  quote={item.quote}
-                  author={item.author}
-                  dateText={item.dateText ?? undefined}
-                onPress={() =>
-                  router.push({
-                    pathname: '/testimonials/[id]',
-                    params: {
-                      id: item.id,
-                      author: item.author,
-                      quote: item.quote.slice(0, 260),
-                      url: item.url ?? '',
-                    },
-                  } as any)
-                }
-                />
-              )}
-            />
-          ) : (
-            <EmptyState
-              title="Trusted by practice owners"
-              body="Read what clients say about selling and buying dental practices with FTA."
-            />
-          )}
-        </SectionCard>
+        {/* Quick access buttons */}
+        <View style={styles.quickAccessButtons}>
+          <Pressable
+            onPress={() => router.push('/articles')}
+            style={styles.quickAccessButtonSecondary}>
+            <FontAwesome name="newspaper-o" size={28} color="#F8C859" />
+            <Text style={styles.quickAccessButtonTextSecondary}>Latest Articles</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => router.push({ pathname: '/testimonials' } as any)}
+            style={styles.quickAccessButtonPrimary}>
+            <FontAwesome name="quote-left" size={28} color="#0b0f1a" />
+            <Text style={styles.quickAccessButtonTextPrimary}>Testimonials</Text>
+          </Pressable>
+        </View>
 
         {/* Socials */}
         <SectionCard
           borderColor={cardBorder}
           title="Follow us"
-          subtitle="Quick links to our socials."
         >
           <View style={styles.socialLinks}>
             <SocialLink icon="instagram" label="Instagram" href="https://www.instagram.com/franktaylorassoc" />
@@ -301,6 +268,7 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#f7f7f7',
   },
   refreshIndicator: {
     position: 'absolute',
@@ -310,7 +278,19 @@ const styles = StyleSheet.create({
     zIndex: 1000,
     paddingVertical: 8,
   },
-  brandLogo: {
+  brandLogoCard: {
+    width: 260,
+    height: 78,
+    borderRadius: 12,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  brandLogoBackground: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     width: 260,
     height: 78,
   },
@@ -320,32 +300,56 @@ const styles = StyleSheet.create({
     padding: ui.spacing.lg,
     gap: ui.spacing.md,
     alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.01)',
+    backgroundColor: '#FFFFFF',
     ...ui.shadow.card,
   },
   heroTitle: {
     textAlign: 'center',
     fontSize: 22,
     fontWeight: '900',
-  },
-  heroSubtitle: {
-    textAlign: 'center',
-    fontSize: 13,
-    fontWeight: '600',
-    opacity: 0.72,
-    lineHeight: 18,
-    maxWidth: 360,
+    color: '#000000',
   },
   heroButtons: {
     flexDirection: 'row',
     gap: 10,
     width: '100%',
   },
-  quickLinks: {
+  quickAccessButtons: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
+    gap: 12,
+    width: '100%',
+  },
+  quickAccessButtonSecondary: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#F8C859',
+    borderRadius: 14,
+    paddingVertical: 20,
+    paddingHorizontal: 16,
+    alignItems: 'center',
     justifyContent: 'center',
+    gap: 10,
+  },
+  quickAccessButtonTextSecondary: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#F8C859',
+  },
+  quickAccessButtonPrimary: {
+    flex: 1,
+    backgroundColor: '#e4ad25',
+    borderRadius: 14,
+    paddingVertical: 20,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  quickAccessButtonTextPrimary: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#0b0f1a',
   },
   socialLinks: {
     flexDirection: 'row',
@@ -357,7 +361,7 @@ const styles = StyleSheet.create({
     borderRadius: ui.radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
     padding: ui.spacing.lg,
-    backgroundColor: 'rgba(255,255,255,0.01)',
+    backgroundColor: '#FFFFFF',
     ...ui.shadow.card,
   },
   sectionHeaderRow: {
@@ -370,11 +374,12 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 18,
     fontWeight: '900',
+    color: '#000000',
   },
   sectionSubtitle: {
     fontSize: 13,
     fontWeight: '700',
-    opacity: 0.72,
+    opacity: 0.85,
     marginTop: 4,
   },
   sectionAction: {
@@ -397,6 +402,7 @@ const styles = StyleSheet.create({
   articleTitle: {
     fontSize: 15,
     fontWeight: '900',
+    color: '#000000',
   },
   articleMeta: {
     fontSize: 12,
@@ -425,7 +431,7 @@ function SectionCard({
   children: React.ReactNode;
 }) {
   const theme = useColorScheme() ?? 'light';
-  const subtle = theme === 'dark' ? 'rgba(255,255,255,0.75)' : 'rgba(0,0,0,0.65)';
+  const subtle = theme === 'dark' ? 'rgba(255,255,255,0.85)' : 'rgba(0,0,0,0.80)';
   const actionBg = theme === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)';
   const divider = theme === 'dark' ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.10)';
   return (
@@ -456,8 +462,8 @@ function ArticleRow({
   onPress: () => void;
 }) {
   const theme = useColorScheme() ?? 'light';
-  const subtle = theme === 'dark' ? 'rgba(255,255,255,0.72)' : 'rgba(0,0,0,0.62)';
-  const iconColor = theme === 'dark' ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.45)';
+  const subtle = theme === 'dark' ? 'rgba(255,255,255,0.85)' : 'rgba(0,0,0,0.80)';
+  const iconColor = theme === 'dark' ? 'rgba(255,255,255,0.70)' : 'rgba(0,0,0,0.60)';
   return (
     <Pressable onPress={onPress} style={styles.articleRow}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
@@ -485,10 +491,10 @@ function Divider() {
 
 function EmptyState({ title, body }: { title: string; body: string }) {
   const theme = useColorScheme() ?? 'light';
-  const subtle = theme === 'dark' ? 'rgba(255,255,255,0.72)' : 'rgba(0,0,0,0.65)';
+  const subtle = theme === 'dark' ? 'rgba(255,255,255,0.85)' : 'rgba(0,0,0,0.80)';
   return (
     <View style={{ paddingVertical: 4 }}>
-      <Text style={{ fontSize: 15, fontWeight: '900' }}>{title}</Text>
+      <Text style={{ fontSize: 15, fontWeight: '900', color: '#000000' }}>{title}</Text>
       <Text style={{ fontSize: 13, fontWeight: '700', color: subtle, marginTop: 6 }}>{body}</Text>
     </View>
   );
@@ -506,7 +512,6 @@ function SocialLink({
   const theme = useColorScheme() ?? 'light';
   const bg = theme === 'dark' ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.06)';
   const borderColor = theme === 'dark' ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.10)';
-  const textColor = Colors[theme].text;
   return (
     <ExternalLink href={href} asChild>
       <Pressable
@@ -514,7 +519,7 @@ function SocialLink({
         accessibilityLabel={`Follow us on ${label}`}
         hitSlop={8}
         style={[socialStyles.iconButton, { backgroundColor: bg, borderColor }]}>
-        <FontAwesome name={icon} size={26} color={textColor} />
+        <FontAwesome name={icon} size={26} color="#000000" />
       </Pressable>
     </ExternalLink>
   );
@@ -582,7 +587,7 @@ function LinkCard({
   onPress: () => void;
 }) {
   const theme = useColorScheme() ?? 'light';
-  const subtle = theme === 'dark' ? 'rgba(255,255,255,0.72)' : 'rgba(0,0,0,0.65)';
+  const subtle = theme === 'dark' ? 'rgba(255,255,255,0.85)' : 'rgba(0,0,0,0.80)';
   return (
     <Pressable onPress={onPress} style={[cardStyles.card, { borderColor }]}>
       {subtitle ? (
@@ -592,7 +597,7 @@ function LinkCard({
         {title}
       </Text>
       {body ? (
-        <Text style={{ fontSize: 14, fontWeight: '600', opacity: 0.75, marginTop: 6 }} numberOfLines={3}>
+        <Text style={{ fontSize: 14, fontWeight: '600', opacity: 0.85, marginTop: 6, color: '#000000' }} numberOfLines={3}>
           {body}
         </Text>
       ) : null}
@@ -614,14 +619,14 @@ function TestimonialCard({
   onPress?: () => void;
 }) {
   const theme = useColorScheme() ?? 'light';
-  const subtle = theme === 'dark' ? 'rgba(255,255,255,0.72)' : 'rgba(0,0,0,0.65)';
+  const subtle = theme === 'dark' ? 'rgba(255,255,255,0.85)' : 'rgba(0,0,0,0.80)';
   return (
     <Pressable disabled={!onPress} onPress={onPress} style={[cardStyles.card, { borderColor }]}>
-      <Text style={{ fontSize: 15, fontWeight: '700' }} numberOfLines={5}>
+      <Text style={{ fontSize: 15, fontWeight: '700', color: '#000000' }} numberOfLines={5}>
         “{quote}”
       </Text>
       <View style={{ marginTop: 10, flexDirection: 'row', justifyContent: 'space-between', gap: 12 }}>
-        <Text style={{ fontSize: 13, fontWeight: '900' }} numberOfLines={1}>
+        <Text style={{ fontSize: 13, fontWeight: '900', color: '#000000' }} numberOfLines={1}>
           {author}
         </Text>
         {dateText ? (
@@ -648,8 +653,8 @@ function TestimonialCarouselCard({
   onPress: () => void;
 }) {
   const theme = useColorScheme() ?? 'light';
-  const subtle = theme === 'dark' ? 'rgba(255,255,255,0.72)' : 'rgba(0,0,0,0.65)';
-  const iconColor = theme === 'dark' ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.28)';
+  const subtle = theme === 'dark' ? 'rgba(255,255,255,0.85)' : 'rgba(0,0,0,0.80)';
+  const iconColor = theme === 'dark' ? 'rgba(255,255,255,0.50)' : 'rgba(0,0,0,0.45)';
   return (
     <Pressable onPress={onPress} style={[testimonialCarouselStyles.card, { borderColor }]}>
       <View style={testimonialCarouselStyles.iconRow}>
@@ -684,8 +689,8 @@ function EmptyCard({
 }) {
   return (
     <View style={[cardStyles.card, { borderColor }]}>
-      <Text style={{ fontSize: 16, fontWeight: '900' }}>{title}</Text>
-      <Text style={{ fontSize: 14, fontWeight: '600', opacity: 0.75, marginTop: 6 }}>{body}</Text>
+      <Text style={{ fontSize: 16, fontWeight: '900', color: '#000000' }}>{title}</Text>
+      <Text style={{ fontSize: 14, fontWeight: '600', opacity: 0.85, marginTop: 6, color: '#000000' }}>{body}</Text>
     </View>
   );
 }
@@ -695,12 +700,12 @@ const cardStyles = StyleSheet.create({
     borderRadius: 14,
     padding: 16,
     borderWidth: StyleSheet.hairlineWidth,
-    backgroundColor: 'rgba(255,255,255,0.01)',
+    backgroundColor: '#FFFFFF',
     ...ui.shadow.card,
   },
   row: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
-  title: { fontSize: 16, fontWeight: '900' },
-  meta: { fontSize: 13, fontWeight: '700' },
+  title: { fontSize: 16, fontWeight: '900', color: '#000000' },
+  meta: { fontSize: 13, fontWeight: '700', color: '#000000' },
   pricePill: {
     paddingHorizontal: 10,
     paddingVertical: 8,
@@ -720,7 +725,7 @@ const testimonialCarouselStyles = StyleSheet.create({
     borderRadius: ui.radius.lg,
     padding: 16,
     borderWidth: StyleSheet.hairlineWidth,
-    backgroundColor: 'rgba(255,255,255,0.01)',
+    backgroundColor: '#FFFFFF',
     ...ui.shadow.card,
   },
   iconRow: {
@@ -732,21 +737,20 @@ const testimonialCarouselStyles = StyleSheet.create({
   quote: {
     fontSize: 15,
     fontWeight: '700',
-    opacity: 0.9,
+    opacity: 1.0,
     lineHeight: 22,
+    color: '#000000',
   },
   footerRow: { marginTop: 12, flexDirection: 'row', justifyContent: 'space-between', gap: 12 },
-  author: { fontSize: 13, fontWeight: '900' },
-  date: { fontSize: 12, fontWeight: '800', opacity: 0.8 },
+  author: { fontSize: 13, fontWeight: '900', color: '#000000' },
+  date: { fontSize: 12, fontWeight: '800', opacity: 0.9 },
 });
 
 function ListingCarouselCard({
   listing,
-  borderColor,
   onPress,
 }: {
   listing: Listing;
-  borderColor: string;
   onPress: () => void;
 }) {
   const theme = useColorScheme() ?? 'light';
@@ -773,41 +777,43 @@ function ListingCarouselCard({
   const refCode = extractRefCode(listing);
   
   return (
-    <Pressable onPress={onPress} style={[carouselStyles.card, { borderColor }]}>
-      {coords ? (
-        <StaticTileMap
-          latitude={coords.latitude}
-          longitude={coords.longitude}
-          width={280}
-          height={150}
-          zoom={mapZoom}
-        />
-      ) : photo ? (
-        <Image source={{ uri: photo }} style={carouselStyles.image} />
-      ) : (
-        <View style={[carouselStyles.image, { backgroundColor: theme === 'dark' ? '#222' : '#ddd' }]} />
-      )}
-      <View style={carouselStyles.body}>
-        <View style={carouselStyles.bodyRow}>
-          <View style={carouselStyles.bodyLeft}>
-            <Text style={carouselStyles.title} numberOfLines={2}>
-              {location}
-            </Text>
-            <View style={carouselStyles.bodyMeta}>
-              <View style={[carouselStyles.pricePill, { backgroundColor: Colors[theme].tint }]}>
-                <Text style={carouselStyles.priceText} numberOfLines={1}>
-                  {price}
-                </Text>
+    <Pressable onPress={onPress} style={carouselStyles.cardWrapper}>
+      <View style={carouselStyles.card}>
+        {coords ? (
+          <StaticTileMap
+            latitude={coords.latitude}
+            longitude={coords.longitude}
+            width={280}
+            height={150}
+            zoom={mapZoom}
+          />
+        ) : photo ? (
+          <Image source={{ uri: photo }} style={carouselStyles.image} />
+        ) : (
+          <View style={[carouselStyles.image, { backgroundColor: theme === 'dark' ? '#222' : '#ddd' }]} />
+        )}
+        <View style={carouselStyles.body}>
+          <View style={carouselStyles.bodyRow}>
+            <View style={carouselStyles.bodyLeft}>
+              <Text style={carouselStyles.title} numberOfLines={2}>
+                {location}
+              </Text>
+              <View style={carouselStyles.bodyMeta}>
+                <View style={[carouselStyles.pricePill, { backgroundColor: '#E4AD25' }]}>
+                  <Text style={carouselStyles.priceText} numberOfLines={1}>
+                    {price}
+                  </Text>
+                </View>
               </View>
             </View>
+            {refCode ? (
+              <View style={[carouselStyles.refCodeBadge, { borderColor: subtitle }]}>
+                <Text style={[carouselStyles.refCode, { color: '#666666' }]} numberOfLines={1}>
+                  Ref. {refCode}
+                </Text>
+              </View>
+            ) : null}
           </View>
-          {refCode ? (
-            <View style={[carouselStyles.refCodeBadge, { borderColor: subtitle }]}>
-              <Text style={[carouselStyles.refCode, { color: subtitle }]} numberOfLines={1}>
-                Ref. {refCode}
-              </Text>
-            </View>
-          ) : null}
         </View>
       </View>
     </Pressable>
@@ -815,17 +821,22 @@ function ListingCarouselCard({
 }
 
 const carouselStyles = StyleSheet.create({
+  cardWrapper: {
+    width: 280,
+  },
   card: {
     width: 280,
     borderRadius: ui.radius.lg,
     overflow: 'hidden',
     borderWidth: StyleSheet.hairlineWidth,
-    backgroundColor: 'rgba(255,255,255,0.01)',
-    ...ui.shadow.card,
+    borderColor: '#E0E0E0',
+    backgroundColor: '#FFFFFF',
   },
   image: {
     width: '100%',
     height: 150,
+    borderTopLeftRadius: ui.radius.lg,
+    borderTopRightRadius: ui.radius.lg,
   },
   body: {
     padding: 14,
@@ -847,12 +858,14 @@ const carouselStyles = StyleSheet.create({
     flexWrap: 'wrap',
   },
   title: {
-    fontSize: 16,
+    fontSize: 20,
     fontWeight: '900',
+    color: '#000000',
   },
   meta: {
     fontSize: 13,
     fontWeight: '700',
+    color: '#000000',
   },
   refCodeBadge: {
     paddingHorizontal: 10,
