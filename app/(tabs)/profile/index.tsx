@@ -238,13 +238,13 @@ export default function ProfileHomeScreen() {
           title="Privacy policy"
           subtitle="How we use your data"
           icon="shield"
-          onPress={() => router.push({ pathname: '/web', params: { url: LINKS.privacy, title: 'Privacy policy' } } as any)}
+          onPress={() => router.push('/privacy')}
         />
         <Row
           title="Terms"
           subtitle="Terms and conditions"
           icon="file-text"
-          onPress={() => router.push({ pathname: '/web', params: { url: LINKS.terms, title: 'Terms' } } as any)}
+          onPress={() => router.push('/terms')}
         />
         <Row
           title="Delete account"

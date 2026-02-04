@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.90.1?target=deno';
+import { createClient } from 'npm:@supabase/supabase-js@2';
 
 import { corsHeaders } from '../_shared/cors.ts';
 
@@ -119,9 +119,10 @@ serve(async (req) => {
       return json(200, { ok: true, alreadyNotified: true });
     }
 
-    // Simple rate-limit: max 3 enquiry leads per 10 minutes per email/phone.
+    // Rate-limit: max 10 enquiry leads per 10 minutes per email/phone (avoids spam; allows testing).
     const keyEmail = (leadRow.email ?? '').trim();
     const keyPhone = (leadRow.phone ?? '').trim();
+    const rateLimitCount = 10;
     if (keyEmail || keyPhone) {
       let q = supabase
         .from('leads')
@@ -134,7 +135,7 @@ serve(async (req) => {
 
       const { count, error: countErr } = await q;
       if (countErr) throw countErr;
-      if ((count ?? 0) > 3) {
+      if ((count ?? 0) > rateLimitCount) {
         return json(429, { error: 'Too many requests. Please wait and try again.' });
       }
     }
@@ -247,6 +248,7 @@ serve(async (req) => {
 
   if (!resendResp.ok) {
     const errText = await resendResp.text().catch(() => '');
+    console.error('[inquiry-email] Resend API error:', resendResp.status, errText);
     return json(502, { error: 'Failed to send email', details: errText });
   }
 

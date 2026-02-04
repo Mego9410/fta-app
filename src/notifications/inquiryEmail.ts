@@ -1,12 +1,8 @@
-import * as Linking from 'expo-linking';
-
 import type { Lead, Listing } from '@/src/domain/types';
-import { requireSupabase, isSupabaseConfigured } from '@/src/supabase/client';
+import { isSupabaseConfigured, requireSupabase } from '@/src/supabase/client';
 import { formatCurrency } from '@/src/ui/format';
 
 type InquiryLead = Pick<Lead, 'id' | 'name' | 'email' | 'phone' | 'message' | 'createdAt'>;
-
-const DEFAULT_INQUIRY_TO_EMAIL = 'oliver.acton@ft-associates.com';
 
 export type InquiryEmailInput = {
   listing: Listing;
@@ -68,43 +64,52 @@ export function buildInquiryEmailPayload(input: InquiryEmailInput) {
   };
 }
 
-function buildMailtoUrl(to: string, subject: string, body: string) {
-  // Use encodeURIComponent to preserve newlines and punctuation.
-  return `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-}
-
 /**
  * Sends a notification email to the team about a "request details" enquiry.
- *
- * Delivery order:
- * - If Supabase is configured: invokes the `inquiry-email` Edge Function to send automatically.
- * - Otherwise: falls back to opening a pre-filled mail composer via `mailto:`.
+ * Uses the inquiry-email Edge Function (Resend) only; never opens the device email app.
  */
 export async function notifyInquiryByEmail(input: InquiryEmailInput): Promise<void> {
+  if (!isSupabaseConfigured) {
+    throw new Error(
+      'Email is not configured. Set EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY to send requests directly.',
+    );
+  }
+
   const payload = buildInquiryEmailPayload(input);
+  const supabase = requireSupabase();
+  const res = await supabase.functions.invoke('inquiry-email', {
+    body: payload,
+  });
 
-  if (isSupabaseConfigured) {
-    try {
-      const supabase = requireSupabase();
-      const res = await supabase.functions.invoke('inquiry-email', {
-        body: payload,
-      });
-
-      if (!res.error) return;
-      // If the function is misconfigured (common in early setup), fall back to mailto so the user can still send.
-      console.warn('Inquiry email edge function failed; falling back to mailto composer', res.error);
-    } catch (e) {
-      console.warn('Inquiry email invoke threw; falling back to mailto composer', e);
+  if (res.error) {
+    let message = res.error.message ?? 'Failed to send request. Please try again.';
+    const raw =
+      (res as { response?: Response }).response ??
+      (res.error as { context?: Response }).context;
+    if (raw) {
+      try {
+        const body =
+          typeof (raw as Response).json === 'function'
+            ? await (raw as Response).json()
+            : JSON.parse(await (raw as Response).text());
+        if (typeof body?.error === 'string') message = body.error;
+        else if (body?.details != null) message = String(body.details);
+      } catch {
+        // keep generic message if body isn't JSON or already consumed
+      }
     }
+    if (__DEV__) {
+      const host = typeof process.env.EXPO_PUBLIC_SUPABASE_URL === 'string'
+        ? new URL(process.env.EXPO_PUBLIC_SUPABASE_URL).host
+        : 'unknown';
+      console.warn(
+        '[inquiry-email] Edge Function error. Supabase host:',
+        host,
+        '| Message:',
+        message
+      );
+    }
+    throw new Error(message);
   }
-
-  const to = process.env.EXPO_PUBLIC_INQUIRY_TO_EMAIL?.trim() || DEFAULT_INQUIRY_TO_EMAIL;
-
-  const url = buildMailtoUrl(to, payload.subject, payload.text);
-  const canOpen = await Linking.canOpenURL(url);
-  if (!canOpen) {
-    throw new Error('Could not open mail composer on this device.');
-  }
-  await Linking.openURL(url);
 }
 

@@ -1,5 +1,3 @@
-import * as Linking from 'expo-linking';
-
 import type { Lead } from '@/src/domain/types';
 import { isSupabaseConfigured, requireSupabase } from '@/src/supabase/client';
 
@@ -88,44 +86,25 @@ export function buildSellerIntakeEmailPayload(input: SellerIntakeEmailInput) {
   };
 }
 
-function buildMailtoUrl(to: string, subject: string, body: string) {
-  return `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-}
-
 /**
  * Notifies the team about a "sell a practice" callback request.
- *
- * Delivery order:
- * - If Supabase is configured: invokes the `seller-intake-email` Edge Function to send automatically.
- * - Otherwise: falls back to opening a pre-filled mail composer via `mailto:`.
+ * Uses the seller-intake-email Edge Function (Resend) only; never opens the device email app.
  */
 export async function notifySellerIntakeByEmail(input: SellerIntakeEmailInput): Promise<void> {
-  const payload = buildSellerIntakeEmailPayload(input);
-
-  if (isSupabaseConfigured) {
-    const supabase = requireSupabase();
-    const res = await supabase.functions.invoke('seller-intake-email', {
-      body: payload,
-    });
-
-    if (res.error) {
-      throw new Error(res.error.message);
-    }
-    return;
-  }
-
-  const to = process.env.EXPO_PUBLIC_INQUIRY_TO_EMAIL?.trim();
-  if (!to) {
+  if (!isSupabaseConfigured) {
     throw new Error(
-      'Email notifications are not configured. Set EXPO_PUBLIC_SUPABASE_URL/EXPO_PUBLIC_SUPABASE_ANON_KEY (recommended) or EXPO_PUBLIC_INQUIRY_TO_EMAIL (mailto fallback).',
+      'Email is not configured. Set EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY to send requests directly.',
     );
   }
 
-  const url = buildMailtoUrl(to, payload.subject, payload.text);
-  const canOpen = await Linking.canOpenURL(url);
-  if (!canOpen) {
-    throw new Error('Could not open mail composer on this device.');
+  const payload = buildSellerIntakeEmailPayload(input);
+  const supabase = requireSupabase();
+  const res = await supabase.functions.invoke('seller-intake-email', {
+    body: payload,
+  });
+
+  if (res.error) {
+    throw new Error(res.error.message ?? 'Failed to send request. Please try again.');
   }
-  await Linking.openURL(url);
 }
 

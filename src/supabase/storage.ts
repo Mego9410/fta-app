@@ -1,11 +1,19 @@
-import { Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
+import { Platform } from 'react-native';
 
 type StorageLike = {
   getItem: (key: string) => Promise<string | null>;
   setItem: (key: string, value: string) => Promise<void>;
   removeItem: (key: string) => Promise<void>;
 };
+
+const OVERFLOW_PREFIX = 'supabase-auth-overflow:';
+const MAX_SECURESTORE_SIZE = 2048; // bytes - SecureStore has a 2048 byte limit
+
+function overflowKey(key: string) {
+  return `${OVERFLOW_PREFIX}${key}`;
+}
 
 function getWebStorage(): StorageLike {
   return {
@@ -34,44 +42,38 @@ function getWebStorage(): StorageLike {
 }
 
 function getSecureStore(): StorageLike {
-  const MAX_SECURESTORE_SIZE = 2048; // bytes - SecureStore has a 2048 byte limit
-  
   return {
     async getItem(key) {
       try {
-        return await SecureStore.getItemAsync(key);
+        const fromSecure = await SecureStore.getItemAsync(key);
+        if (fromSecure !== null) return fromSecure;
+        const fromOverflow = await AsyncStorage.getItem(overflowKey(key));
+        return fromOverflow;
       } catch (error: any) {
-        // SecureStore may fail if user interaction is not allowed (e.g., during background refresh)
-        // Return null to allow Supabase to gracefully handle the missing session
         console.warn('SecureStore getItem failed, returning null:', error?.message);
         return null;
       }
     },
     async setItem(key, value) {
+      const sizeInBytes = new TextEncoder().encode(value).length;
+      const useOverflow = sizeInBytes > MAX_SECURESTORE_SIZE;
       try {
-        // Check size before storing - SecureStore has a 2048 byte limit
-        // Calculate UTF-8 byte length (more accurate than string length for multi-byte characters)
-        const sizeInBytes = new TextEncoder().encode(value).length;
-        if (sizeInBytes > MAX_SECURESTORE_SIZE) {
-          console.warn(
-            `SecureStore setItem: Value for key "${key}" is ${sizeInBytes} bytes, exceeding the 2048 byte limit. ` +
-            'This may not be stored successfully. Consider using a different storage mechanism for large values.'
-          );
+        if (useOverflow) {
+          await SecureStore.deleteItemAsync(key).catch(() => {});
+          await AsyncStorage.setItem(overflowKey(key), value);
+        } else {
+          await AsyncStorage.removeItem(overflowKey(key)).catch(() => {});
+          await SecureStore.setItemAsync(key, value);
         }
-        await SecureStore.setItemAsync(key, value);
       } catch (error: any) {
-        // SecureStore may fail if user interaction is not allowed (e.g., during background refresh)
-        // or if the value is too large
-        // Silently fail - the session will be saved on next successful interaction
-        console.warn('SecureStore setItem failed:', error?.message);
+        console.warn('Auth storage setItem failed:', error?.message);
       }
     },
     async removeItem(key) {
       try {
         await SecureStore.deleteItemAsync(key);
+        await AsyncStorage.removeItem(overflowKey(key));
       } catch (error: any) {
-        // SecureStore may fail if user interaction is not allowed (e.g., during background refresh)
-        // Silently fail - cleanup will happen on next successful interaction
         console.warn('SecureStore removeItem failed:', error?.message);
       }
     },

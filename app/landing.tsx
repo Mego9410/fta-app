@@ -1,3 +1,4 @@
+import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Dimensions, Image, Linking, Platform, Pressable, StyleSheet, View } from 'react-native';
 import Animated, {
@@ -165,7 +166,12 @@ export default function LandingPage() {
   };
 
   const handleLinkPress = (url: string) => {
-    Linking.openURL(url).catch(() => {});
+    // Use router for internal routes, Linking for external URLs
+    if (url.startsWith('/')) {
+      router.push(url as any);
+    } else {
+      Linking.openURL(url).catch(() => {});
+    }
   };
 
   return (

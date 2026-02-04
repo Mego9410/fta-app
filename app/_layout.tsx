@@ -193,6 +193,8 @@ function RootLayoutNav() {
         <Stack.Screen name="web" />
         <Stack.Screen name="swipe" />
         <Stack.Screen name="landing" />
+        <Stack.Screen name="privacy" />
+        <Stack.Screen name="terms" />
         <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
       </Stack>
     </ThemeProvider>

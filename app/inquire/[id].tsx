@@ -1,15 +1,15 @@
+import { useFocusEffect } from '@react-navigation/native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
 
 import { Text } from '@/components/Themed';
-import type { Listing } from '@/src/domain/types';
 import { useSession } from '@/src/auth/useSession';
-import { getListingById } from '@/src/data/listingsRepo';
 import { createLead } from '@/src/data/leadsRepo';
-import { enqueueOutbox, flushOutbox } from '@/src/data/outboxRepo';
+import { getListingById } from '@/src/data/listingsRepo';
 import { getLocalOnboardingState } from '@/src/data/onboardingLocalRepo';
+import { enqueueOutbox, flushOutbox } from '@/src/data/outboxRepo';
+import type { Listing } from '@/src/domain/types';
 import { buildInquiryEmailPayload, notifyInquiryByEmail } from '@/src/notifications/inquiryEmail';
 import { isSupabaseConfigured } from '@/src/supabase/client';
 import { getProfile } from '@/src/supabase/profileRepo';
@@ -228,9 +228,13 @@ export default function InquireScreen() {
                   } catch {
                     // ignore enqueue failure; the lead itself may still be stored locally/supabase
                   }
+                  const errMsg = String(e instanceof Error ? e.message : e);
+                  const isConfigError = /not configured|RESEND|INQUIRY_FROM/i.test(errMsg);
                   Alert.alert(
-                    'Enquiry submitted',
-                    'We saved your enquiry and will send the notification when we’re back online. If you don’t hear back soon, please contact us directly.',
+                    'Enquiry saved',
+                    isConfigError
+                      ? "Your enquiry has been saved, but the email notification couldn't be sent (Resend may not be set up in Supabase yet). If you don't hear back soon, please contact us directly."
+                      : "We saved your enquiry and will send the notification when we’re back online. If you don’t hear back soon, please contact us directly.",
                   );
                 }
 

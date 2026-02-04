@@ -28,6 +28,24 @@ function backoffMs(attempts: number) {
   return Math.min(24 * 60 * 60 * 1000, base * Math.pow(2, n));
 }
 
+async function edgeInvokeErrorMessage(
+  res: { error: Error | null; response?: Response }
+): Promise<string> {
+  if (!res.error) return '';
+  let message = res.error.message ?? 'Edge function failed';
+  const raw = res.response ?? (res.error as { context?: Response }).context;
+  if (raw && typeof (raw as Response).json === 'function') {
+    try {
+      const body = await (raw as Response).json();
+      if (typeof body?.error === 'string') message = body.error;
+      else if (body?.details != null) message = String(body.details);
+    } catch {
+      // keep generic message if body isn't JSON
+    }
+  }
+  return message;
+}
+
 export async function enqueueOutbox(type: OutboxType, payload: unknown): Promise<string> {
   const db = await getDbHandle();
   const id = makeId('outbox');
@@ -123,13 +141,13 @@ async function processRow(row: OutboxRow) {
 
   if (row.type === 'email_inquiry') {
     const res = await supabase.functions.invoke('inquiry-email', { body: payload ?? {} });
-    if (res.error) throw new Error(res.error.message);
+    if (res.error) throw new Error(await edgeInvokeErrorMessage(res));
     return;
   }
 
   if (row.type === 'email_seller') {
     const res = await supabase.functions.invoke('seller-intake-email', { body: payload ?? {} });
-    if (res.error) throw new Error(res.error.message);
+    if (res.error) throw new Error(await edgeInvokeErrorMessage(res));
     return;
   }
 

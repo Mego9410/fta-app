@@ -53,19 +53,32 @@ This creates:
 Deploy the sync functions to Supabase:
 
 ```bash
-# Install Supabase CLI if not already installed
-npm install -g supabase
-
+# Use Supabase CLI via npx (no global install required)
 # Login to Supabase
-supabase login
+npx supabase login
 
-# Link your project
-supabase link --project-ref your-project-ref
+# Link your project (get project-ref from Supabase Dashboard → Project Settings → General)
+npx supabase link --project-ref your-project-ref
 
 # Deploy the sync functions
-supabase functions deploy sync-web-content
-supabase functions deploy sync-listings
+npx supabase functions deploy sync-web-content
+npx supabase functions deploy sync-listings
 ```
+
+**Get enquiry emails sending (Resend):** The app sends enquiry emails via the `inquiry-email` Edge Function, which calls Resend. The function runs on Supabase’s servers, so it does **not** use your app’s `.env` — it only sees **Supabase Edge Function secrets**. To get emails sending:
+
+1. **Deploy the function** (if not already):  
+   `npx supabase functions deploy inquiry-email`
+
+2. **Get a Resend API key**: Sign up at [resend.com](https://resend.com), create an API key, and (if you want to send from your domain) add and verify your domain in Resend.
+
+3. **Set secrets in Supabase** (Dashboard → **Edge Functions** → **Secrets**, or CLI `npx supabase secrets set RESEND_API_KEY=re_xxx`):
+   - **`RESEND_API_KEY`** – Your Resend API key (e.g. `re_xxxxx`)
+   - **`INQUIRY_FROM_EMAIL`** – Sender address. For internal use only, **`onboarding@resend.dev`** is fine (no domain verification needed). For production with your own domain, use a verified address (e.g. `oliver.acton@ft-associates.com`).
+
+   Supabase already provides `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` to the function.
+
+4. **Test**: Submit an enquiry from the app; the function will send the email to `oliver.acton@ft-associates.com` (or the value of `INQUIRY_TO_EMAIL` if set).
 
 ### 2.2 Edge Function Secrets
 
@@ -74,9 +87,17 @@ Set these secrets in your Supabase project dashboard (Settings → Edge Function
 #### Required for email functions (`inquiry-email` and `seller-intake-email`):
 
 - **`RESEND_API_KEY`** - Your Resend API key for sending emails
-- **`INQUIRY_FROM_EMAIL`** - Sender email address (must be verified in Resend)
+- **`INQUIRY_FROM_EMAIL`** - Sender email address (must be a verified domain in Resend; e.g. `oliver.acton@ft-associates.com` or `noreply@ft-associates.com`)
 - **`SUPABASE_URL`** - Your Supabase project URL (e.g., `https://xxxxx.supabase.co`)
 - **`SUPABASE_SERVICE_ROLE_KEY`** - Your Supabase service role key (for rate limiting checks)
+
+**Resend domain verification (ft-associates.com):** To send from `@ft-associates.com`, add this DKIM TXT record in your DNS for `ft-associates.com` (Resend will then verify the domain):
+
+| Type | Name/Host | Value |
+|------|-----------|-------|
+| TXT | `resend._domainkey` | `p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDNtCqTmTkHgAMev8Hq9fEnw0JWf7ME3it1BMKHuXiBhI737hwd+OCXB2NWVrG32CcaiJIK9G1qd+KaRlzrGyMFpUVhlLsf3yb98AQcVTUwJyyDTe+OjvX8n2kbgvAY/miAi/IqKx6BDRLFSqrrzUdXtgmhClnjpl1wlZSD78VfvQIDAQAB` |
+
+After the record propagates, verify the domain in the [Resend dashboard](https://resend.com/domains), then set `INQUIRY_FROM_EMAIL` to a verified address (e.g. `oliver.acton@ft-associates.com`). All inquiry and seller-intake emails are sent **to** `oliver.acton@ft-associates.com` by default.
 
 #### Required for sync functions (`sync-web-content` and `sync-listings`):
 

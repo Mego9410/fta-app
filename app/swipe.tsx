@@ -1,23 +1,24 @@
 import { router } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, StyleSheet, View, Dimensions } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Alert, Dimensions, StyleSheet, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Text } from '@/components/Themed';
 import { useColorScheme } from '@/components/useColorScheme';
-import type { Listing } from '@/src/domain/types';
-import { listListings } from '@/src/data/listingsRepo';
+import { useSession } from '@/src/auth/useSession';
 import { listFavoriteIds, toggleFavorite } from '@/src/data/favoritesRepo';
 import { createLead } from '@/src/data/leadsRepo';
-import { useSession } from '@/src/auth/useSession';
-import { getProfile } from '@/src/supabase/profileRepo';
+import { listListings } from '@/src/data/listingsRepo';
 import { getLocalOnboardingState } from '@/src/data/onboardingLocalRepo';
+import { enqueueOutbox, flushOutbox } from '@/src/data/outboxRepo';
+import type { Listing } from '@/src/domain/types';
+import { buildInquiryEmailPayload, notifyInquiryByEmail } from '@/src/notifications/inquiryEmail';
 import { isSupabaseConfigured } from '@/src/supabase/client';
+import { getProfile } from '@/src/supabase/profileRepo';
+import { LiquidGlassBackButton } from '@/src/ui/components/LiquidGlassBackButton';
 import { SwipeableListingCard } from '@/src/ui/components/SwipeableListingCard';
 import { SwipeActionButtons } from '@/src/ui/components/SwipeActionButtons';
-import { ScreenHeader } from '@/src/ui/components/ScreenHeader';
-import { LiquidGlassBackButton } from '@/src/ui/components/LiquidGlassBackButton';
 import { ui } from '@/src/ui/theme';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -175,7 +176,7 @@ export default function SwipeScreen() {
               }
 
               // Create inquiry lead
-              await createLead({
+              const lead = await createLead({
                 type: 'buyerInquiry',
                 listingId: listing.id,
                 name: name.trim(),
@@ -183,6 +184,19 @@ export default function SwipeScreen() {
                 phone: phone.trim(),
                 message: `Requested details from Match My Practice - ${listing.title}`,
               });
+
+              // Send inquiry email to oliver.acton@ft-associates.com (via Resend)
+              try {
+                await notifyInquiryByEmail({ listing, lead });
+              } catch (e) {
+                console.warn('Inquiry email notification failed', e);
+                try {
+                  await enqueueOutbox('email_inquiry', buildInquiryEmailPayload({ listing, lead }));
+                  flushOutbox({ limit: 5 }).catch(() => {});
+                } catch {
+                  // ignore enqueue failure
+                }
+              }
 
               // Also save to favorites (request details = like + inquiry)
               await toggleFavorite(listing.id);

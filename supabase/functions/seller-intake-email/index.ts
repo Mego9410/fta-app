@@ -77,13 +77,13 @@ serve(async (req) => {
   }
 
   const resendApiKey = Deno.env.get('RESEND_API_KEY') ?? '';
-  const toEmail = Deno.env.get('INQUIRY_TO_EMAIL') ?? '';
+  const toEmail = (Deno.env.get('INQUIRY_TO_EMAIL') ?? '').trim() || 'oliver.acton@ft-associates.com';
   const fromEmail = Deno.env.get('INQUIRY_FROM_EMAIL') ?? '';
 
-  if (!resendApiKey || !toEmail || !fromEmail) {
+  if (!resendApiKey || !fromEmail) {
     return json(500, {
       error:
-        'Email function is not configured. Set RESEND_API_KEY, INQUIRY_TO_EMAIL, and INQUIRY_FROM_EMAIL in Supabase function secrets.',
+        'Email function is not configured. Set RESEND_API_KEY and INQUIRY_FROM_EMAIL in Supabase function secrets. (INQUIRY_TO_EMAIL is optional.)',
     });
   }
 
