@@ -1,19 +1,19 @@
 import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, Image, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
 
 import { Text } from '@/components/Themed';
-import type { Listing } from '@/src/domain/types';
 import { getListingById, setListingStatus, upsertListing } from '@/src/data/listingsRepo';
-import { hydrateAdminSession, isAdminAuthed } from '@/src/ui/admin/adminSession';
+import type { Listing } from '@/src/domain/types';
 import { getAdminAccess } from '@/src/supabase/admin';
 import { isProdBuild, isSupabaseConfigured } from '@/src/supabase/client';
+import { hydrateAdminSession, isAdminAuthed } from '@/src/ui/admin/adminSession';
+import { draftToUpsertInput, listingToDraft, validateDraft, type ListingDraft } from '@/src/ui/admin/listingForm';
 import { Field } from '@/src/ui/components/Field';
 import { PrimaryButton } from '@/src/ui/components/PrimaryButton';
-import { SecondaryButton } from '@/src/ui/components/SecondaryButton';
 import { ScreenHeader } from '@/src/ui/components/ScreenHeader';
-import { draftToUpsertInput, listingToDraft, validateDraft, type ListingDraft } from '@/src/ui/admin/listingForm';
+import { SecondaryButton } from '@/src/ui/components/SecondaryButton';
 import { ui } from '@/src/ui/theme';
 
 export default function AdminEditListingScreen() {
@@ -29,19 +29,19 @@ export default function AdminEditListingScreen() {
     let cancelled = false;
     (async () => {
       if (isProdBuild) {
-        router.replace('/profile/admin');
+        router.replace('/profile');
         return;
       }
       if (!isSupabaseConfigured) {
         await hydrateAdminSession();
         if (!isAdminAuthed()) {
-          router.replace('/profile/admin');
+          router.replace('/profile');
           return;
         }
       } else {
         const access = await getAdminAccess();
         if (access.status !== 'admin') {
-          router.replace('/profile/admin');
+          router.replace('/profile');
           return;
         }
       }

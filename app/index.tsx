@@ -1,16 +1,14 @@
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
 
-import { Text } from '@/components/Themed';
 import {
-  consumeAdminForceOnboardingNextOpen,
-  consumeAdminForceLoginNextOpen,
-  getLocalOnboardingState,
-  isAdminSkipOnboardingEnabled,
+    consumeAdminForceLoginNextOpen,
+    consumeAdminForceOnboardingNextOpen,
+    getLocalOnboardingState,
+    isAdminSkipOnboardingEnabled,
 } from '@/src/data/onboardingLocalRepo';
 import { isSupabaseConfigured, requireSupabase } from '@/src/supabase/client';
-import { ui } from '@/src/ui/theme';
+import { LoadingScreen } from '@/src/ui/components/LoadingScreen';
 
 type OnboardingStep = 'profile' | 'buyer' | 'preferences' | 'done';
 
@@ -70,8 +68,14 @@ export default function IndexGate() {
         }
 
         const supabase = requireSupabase();
-        const { data } = await supabase.auth.getSession();
-        const session = data.session;
+        let { data } = await supabase.auth.getSession();
+        let session = data.session;
+        if (!session) {
+          // Retry once after short delay (SecureStore may not be ready on cold start)
+          await new Promise((r) => setTimeout(r, 400));
+          const retry = await supabase.auth.getSession();
+          session = retry.data.session;
+        }
         if (!session) {
           router.replace('/(onboarding)/welcome');
           return;
@@ -113,6 +117,11 @@ export default function IndexGate() {
         } else {
           router.replace(stepToRoute(step));
         }
+      } catch (e) {
+        if (!cancelled) {
+          setStatus('ready');
+          router.replace('/(onboarding)/welcome');
+        }
       } finally {
         if (!cancelled) setStatus('ready');
       }
@@ -122,24 +131,6 @@ export default function IndexGate() {
     };
   }, []);
 
-  if (status === 'loading') {
-    return (
-      <View style={styles.page}>
-        <Text style={styles.text}>Loading…</Text>
-      </View>
-    );
-  }
-
-  // Navigation happens via router.replace above.
-  return (
-    <View style={styles.page}>
-      <Text style={styles.text}>Loading…</Text>
-    </View>
-  );
+  return <LoadingScreen />;
 }
-
-const styles = StyleSheet.create({
-  page: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: ui.spacing.xl },
-  text: { fontSize: 14, fontWeight: '700', opacity: 0.7 },
-});
 

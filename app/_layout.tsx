@@ -1,32 +1,30 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
-import { Stack } from 'expo-router';
+import { router, Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { useEffect, useState } from 'react';
-import 'react-native-reanimated';
-import 'react-native-gesture-handler';
-import { AppState, Platform, Pressable, StyleSheet, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
-import * as Notifications from 'expo-notifications';
 import { StatusBar } from 'expo-status-bar';
+import { useEffect, useState } from 'react';
+import { AppState, Platform, Pressable, StyleSheet, View } from 'react-native';
+import 'react-native-gesture-handler';
+import 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useColorScheme } from '@/components/useColorScheme';
 import { Text } from '@/components/Themed';
+import { useColorScheme } from '@/components/useColorScheme';
+import { registerBackgroundFetch } from '@/src/data/backgroundTask';
 import { initDb } from '@/src/data/db';
 import { maybeSyncListingsFromWebsite } from '@/src/data/listingsSync';
 import { flushOutbox } from '@/src/data/outboxRepo';
-import { registerBackgroundFetch } from '@/src/data/backgroundTask';
 import { setupNotificationHandlers } from '@/src/notifications/notifications';
 import { isSupabaseRequiredButMissing } from '@/src/supabase/client';
 import { initTelemetry } from '@/src/telemetry';
-import { ui } from '@/src/ui/theme';
 import { LoadingScreen } from '@/src/ui/components/LoadingScreen';
+import { ui } from '@/src/ui/theme';
 
 export {
-  // Catch any errors thrown by the Layout component.
-  ErrorBoundary,
+    // Catch any errors thrown by the Layout component.
+    ErrorBoundary
 } from 'expo-router';
 
 export const unstable_settings = {
@@ -183,6 +181,7 @@ function RootLayoutNav() {
         }}>
         <Stack.Screen name="index" options={{ headerShown: false, contentStyle: { paddingTop: 0 } }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false, contentStyle: { paddingTop: 0 } }} />
+        <Stack.Screen name="(onboarding)" options={{ headerShown: false, contentStyle: { paddingTop: 0 } }} />
         <Stack.Screen name="listings/[id]" />
         <Stack.Screen name="inquire/[id]" />
         <Stack.Screen name="sell/index" />

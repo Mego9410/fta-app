@@ -1,29 +1,28 @@
 import { Link, router } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Alert,
-  FlatList,
-  Platform,
-  Pressable,
-  RefreshControl,
-  StyleSheet,
-  Switch,
-  TextInput,
-  View,
+    Alert,
+    FlatList,
+    Platform,
+    Pressable,
+    RefreshControl,
+    StyleSheet,
+    TextInput,
+    View
 } from 'react-native';
 
 import { Text } from '@/components/Themed';
-import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
-import type { Listing } from '@/src/domain/types';
-import { listListings, setListingStatus } from '@/src/data/listingsRepo';
-import { setAdminForceLoginNextOpenEnabled, setAdminForceOnboardingNextOpenEnabled } from '@/src/data/onboardingLocalRepo';
+import Colors from '@/constants/Colors';
+import { listListings } from '@/src/data/listingsRepo';
 import { getListingsSyncMeta, maybeSyncListingsFromWebsite } from '@/src/data/listingsSync';
 import { checkForNewListings } from '@/src/data/newListingsCheck';
+import { setAdminForceLoginNextOpenEnabled, setAdminForceOnboardingNextOpenEnabled } from '@/src/data/onboardingLocalRepo';
+import type { Listing } from '@/src/domain/types';
 import { requestNotificationPermissions } from '@/src/notifications/notifications';
-import { hydrateAdminSession, isAdminAuthed, setAdminAuthed } from '@/src/ui/admin/adminSession';
 import { getAdminAccess } from '@/src/supabase/admin';
-import { isSupabaseConfigured, requireSupabase } from '@/src/supabase/client';
+import { isProdBuild, isSupabaseConfigured, requireSupabase } from '@/src/supabase/client';
+import { hydrateAdminSession, setAdminAuthed } from '@/src/ui/admin/adminSession';
 import { ListingCard } from '@/src/ui/components/ListingCard';
 import { ScreenHeader } from '@/src/ui/components/ScreenHeader';
 import { ui } from '@/src/ui/theme';
@@ -83,6 +82,13 @@ export default function AdminHomeScreen() {
     };
   }, []);
 
+  // Non-admins who land on admin: redirect to profile so they never see admin UI
+  useEffect(() => {
+    if (hydrated && mode === 'supabase' && !authed) {
+      router.replace('/profile');
+    }
+  }, [hydrated, mode, authed]);
+
   const query = useMemo(
     () => ({ status: 'active' as const, keyword: keyword.trim() ? keyword.trim() : undefined }),
     [keyword],
@@ -132,38 +138,16 @@ export default function AdminHomeScreen() {
 
   if (!authed) {
     if (mode === 'supabase') {
+      // Non-admins: redirect to profile so they never see admin UI
       return (
         <View style={styles.container}>
           <ScreenHeader
             mode="tabs"
             fallbackHref="/profile"
             title="Admin"
-            subtitle={notAdmin ? 'You are signed in but not an admin.' : 'Sign in with an admin account.'}
+            subtitle="Loading…"
             style={{ paddingHorizontal: 0 }}
           />
-
-          {authEmail ? <Text style={styles.hint}>Signed in as: {authEmail}</Text> : null}
-
-          <Pressable style={[styles.btn, styles.btnPrimary]} onPress={() => router.push('/login')}>
-            <Text style={styles.btnPrimaryText}>Sign in</Text>
-          </Pressable>
-
-          {authEmail ? (
-            <Pressable
-              style={[styles.btn, styles.btnGhost]}
-              onPress={async () => {
-                try {
-                  const supabase = requireSupabase();
-                  await supabase.auth.signOut();
-                } finally {
-                  setAuthedState(false);
-                  setAuthEmail('');
-                  setNotAdmin(false);
-                }
-              }}>
-              <Text style={styles.btnGhostText}>Sign out</Text>
-            </Pressable>
-          ) : null}
         </View>
       );
     }
@@ -237,41 +221,45 @@ export default function AdminHomeScreen() {
       />
 
       <View style={styles.controls}>
-        <View style={styles.onboardingAdmin}>
-          <Text style={styles.sectionTitle}>Onboarding (Admin)</Text>
-          <View style={styles.onboardingActions}>
-            <Pressable
-              style={[styles.btn, styles.btnPrimary]}
-              onPress={async () => {
-                await setAdminForceOnboardingNextOpenEnabled(true);
-                Alert.alert('Onboarding forced', 'On next app open, onboarding will be shown.');
-              }}>
-              <Text style={styles.btnPrimaryText}>Force on next open</Text>
-            </Pressable>
+        {!isProdBuild && (
+          <>
+            <View style={styles.onboardingAdmin}>
+              <Text style={styles.sectionTitle}>Onboarding (Admin)</Text>
+              <View style={styles.onboardingActions}>
+                <Pressable
+                  style={[styles.btn, styles.btnPrimary]}
+                  onPress={async () => {
+                    await setAdminForceOnboardingNextOpenEnabled(true);
+                    Alert.alert('Onboarding forced', 'On next app open, onboarding will be shown.');
+                  }}>
+                  <Text style={styles.btnPrimaryText}>Force on next open</Text>
+                </Pressable>
 
-            <Pressable style={[styles.btn, styles.btnGhost]} onPress={() => router.push('/(onboarding)/welcome')}>
-              <Text style={styles.btnGhostText}>Start now</Text>
-            </Pressable>
-          </View>
-        </View>
+                <Pressable style={[styles.btn, styles.btnGhost]} onPress={() => router.push('/(onboarding)/welcome')}>
+                  <Text style={styles.btnGhostText}>Start now</Text>
+                </Pressable>
+              </View>
+            </View>
 
-        <View style={styles.onboardingAdmin}>
-          <Text style={styles.sectionTitle}>Auth (Admin)</Text>
-          <View style={styles.onboardingActions}>
-            <Pressable
-              style={[styles.btn, styles.btnPrimary]}
-              onPress={async () => {
-                await setAdminForceLoginNextOpenEnabled(true);
-                Alert.alert('Login forced', 'On next app open, the login screen will be shown.');
-              }}>
-              <Text style={styles.btnPrimaryText}>Force login on next open</Text>
-            </Pressable>
+            <View style={styles.onboardingAdmin}>
+              <Text style={styles.sectionTitle}>Auth (Admin)</Text>
+              <View style={styles.onboardingActions}>
+                <Pressable
+                  style={[styles.btn, styles.btnPrimary]}
+                  onPress={async () => {
+                    await setAdminForceLoginNextOpenEnabled(true);
+                    Alert.alert('Login forced', 'On next app open, the login screen will be shown.');
+                  }}>
+                  <Text style={styles.btnPrimaryText}>Force login on next open</Text>
+                </Pressable>
 
-            <Pressable style={[styles.btn, styles.btnGhost]} onPress={() => router.push('/login')}>
-              <Text style={styles.btnGhostText}>Open login now</Text>
-            </Pressable>
-          </View>
-        </View>
+                <Pressable style={[styles.btn, styles.btnGhost]} onPress={() => router.push('/login')}>
+                  <Text style={styles.btnGhostText}>Open login now</Text>
+                </Pressable>
+              </View>
+            </View>
+          </>
+        )}
 
         <View style={styles.onboardingAdmin}>
           <Text style={styles.sectionTitle}>Match My Practice (Hidden Feature)</Text>

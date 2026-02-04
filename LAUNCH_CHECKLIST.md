@@ -47,6 +47,8 @@ Use this checklist to verify everything is working before going live.
 - [ ] Crash reporting captures errors (if Sentry configured)
 - [ ] Analytics events fire (if PostHog configured)
 
+**Production cleanup notes:** The "Admin: Skip onboarding" button has been removed from onboarding. Force onboarding / Force login controls are only shown in development builds (hidden in production). Session persistence uses Supabase with SecureStore (native) or localStorage (web)—no extra setup. Only users with an admin account see the Admin menu and can access admin screens; non-admins who open admin URLs are redirected to Profile.
+
 ## ✅ Content
 
 - [ ] Listings display correctly from website sync

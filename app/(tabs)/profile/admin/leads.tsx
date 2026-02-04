@@ -3,8 +3,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, FlatList, Platform, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 
 import { Text } from '@/components/Themed';
-import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
+import Colors from '@/constants/Colors';
 import { getAdminAccess } from '@/src/supabase/admin';
 import { isSupabaseConfigured, requireSupabase } from '@/src/supabase/client';
 import { ScreenHeader } from '@/src/ui/components/ScreenHeader';
@@ -54,20 +54,20 @@ export default function AdminLeadsScreen() {
       try {
         if (!isSupabaseConfigured) {
           Alert.alert('Supabase not configured', 'Set EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY.');
-          router.replace('/profile/admin');
+          router.replace('/profile');
           return;
         }
 
         const access = await getAdminAccess();
         if (cancelled) return;
         if (access.status !== 'admin') {
-          router.replace('/profile/admin');
+          router.replace('/profile');
           return;
         }
         setReady(true);
       } catch (e: any) {
         Alert.alert('Admin check failed', e?.message ?? String(e));
-        router.replace('/profile/admin');
+        router.replace('/profile');
       }
     })();
     return () => {

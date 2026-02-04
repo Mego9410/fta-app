@@ -2,7 +2,6 @@ import { router } from 'expo-router';
 import { Image, StyleSheet, View } from 'react-native';
 
 import { Text } from '@/components/Themed';
-import { setAdminSkipOnboardingEnabled } from '@/src/data/onboardingLocalRepo';
 import { isSupabaseConfigured } from '@/src/supabase/client';
 import { PrimaryButton } from '@/src/ui/components/PrimaryButton';
 import { SecondaryButton } from '@/src/ui/components/SecondaryButton';
@@ -43,14 +42,6 @@ export default function Welcome() {
         />
 
         <SecondaryButton title="Already have an account? Sign in" onPress={() => router.push('/login')} />
-
-        <SecondaryButton
-          title="Admin: Skip onboarding"
-          onPress={async () => {
-            await setAdminSkipOnboardingEnabled(true);
-            router.replace('/(tabs)');
-          }}
-        />
       </View>
     </View>
   );
